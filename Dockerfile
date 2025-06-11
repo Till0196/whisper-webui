@@ -19,4 +19,3 @@ EXPOSE 3000
 CMD npm run build && \
     cp -r /app/dist/* /srv/ && \
     caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
-
