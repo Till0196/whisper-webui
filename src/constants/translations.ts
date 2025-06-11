@@ -35,7 +35,8 @@ export const translations: Record<Language, Record<string, any>> = {
       placeholder: 'APIキーを入力してください'
     },
     model: {
-      label: 'モデル'
+      label: 'モデル',
+      required: 'モデルを選択してください'
     },
     language: {
       label: '言語',
@@ -79,12 +80,13 @@ export const translations: Record<Language, Record<string, any>> = {
       title: 'ログ',
       processingStart: '処理開始: %{startTime}\nファイル名: %{fileName}\nファイルサイズ: %{fileSize}バイト',
       processingComplete: '処理完了: %{endTime}\n処理時間: %{processingTime}秒\n総再生時間: %{totalDuration}秒',
-      durationFound: '総再生時間: %{duration}秒',
+      durationFound: 'FFmpegから総再生時間を取得: %{duration}秒',
       errors: {
-        durationNotFound: '音声ファイルの長さを取得できませんでした',
+        durationNotFound: 'FFmpegから総再生時間を取得できませんでした',
         httpError: 'HTTPエラーが発生しました（ステータス: %{status}）',
         responseNotReadable: 'レスポンスを読み取れませんでした',
-        unknown: '不明なエラーが発生しました'
+        unknown: '不明なエラーが発生しました',
+        modelNotSelected: 'モデルを選択してください'
       }
     },
     transcription: {
@@ -131,7 +133,8 @@ export const translations: Record<Language, Record<string, any>> = {
       placeholder: 'Enter your API Key'
     },
     model: {
-      label: 'Model'
+      label: 'Model',
+      required: 'Please select a model'
     },
     language: {
       label: 'Language',
@@ -175,12 +178,13 @@ export const translations: Record<Language, Record<string, any>> = {
       title: 'Logs',
       processingStart: 'Processing started: %{startTime}\nFilename: %{fileName}\nFile size: %{fileSize} bytes',
       processingComplete: 'Processing completed: %{endTime}\nProcessing time: %{processingTime} seconds\nTotal duration: %{totalDuration} seconds',
-      durationFound: 'Total duration: %{duration} seconds',
+      durationFound: 'Total duration obtained from FFmpeg: %{duration} seconds',
       errors: {
-        durationNotFound: 'Could not get audio file duration',
+        durationNotFound: 'Could not obtain total duration from FFmpeg',
         httpError: 'HTTP error occurred (status: %{status})',
         responseNotReadable: 'Could not read response',
-        unknown: 'An unknown error occurred'
+        unknown: 'An unknown error occurred',
+        modelNotSelected: 'Please select a model'
       }
     },
     transcription: {

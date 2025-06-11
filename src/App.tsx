@@ -131,6 +131,15 @@ const AppContent: React.FC = () => {
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return;
 
+    // モデルが選択されていない場合はエラー
+    if (!selectedModel) {
+      setLogs(prev => [...prev, {
+        type: 'error',
+        message: t('errors.modelNotSelected')
+      }]);
+      return;
+    }
+
     // 前回の処理の完了・エラー状態をリセット
     setCurrentStep('');
     setIsProcessingComplete(false);
@@ -215,12 +224,12 @@ const AppContent: React.FC = () => {
             // デバッグ情報をログに追加（重複を防ぐため、同じメッセージが連続しないようにする）
             setLogs(prev => {
               const lastLog = prev[prev.length - 1];
-              if (lastLog && lastLog.message === `FFmpegから総再生時間を取得: ${newDuration}秒`) {
+              if (lastLog && lastLog.message === t('logs.durationFound', { duration: newDuration.toFixed(2) })) {
                 return prev;
               }
               return [...prev, {
                 type: 'debug',
-                message: `FFmpegから総再生時間を取得: ${newDuration}秒`
+                message: t('logs.durationFound', { duration: newDuration.toFixed(2) })
               }];
             });
           }
@@ -232,9 +241,9 @@ const AppContent: React.FC = () => {
       if (!durationFound) {
         setLogs(prev => [...prev, {
           type: 'error',
-          message: `総再生時間が取得できませんでした。durationFound: ${durationFound}, totalDuration: ${totalDuration}`
+          message: t('logs.errors.durationNotFound')
         }]);
-        throw new Error(t('errors.durationNotFound'));
+        throw new Error(t('logs.errors.durationNotFound'));
       }
 
       setCurrentStep('splitting');
@@ -671,6 +680,8 @@ const AppContent: React.FC = () => {
                 value={selectedModel}
                 onChange={handleModelChange}
                 label={t('model.label')}
+                required
+                error={!selectedModel}
               >
                 {apiOptions?.models.map((model) => (
                   <MenuItem key={model.id} value={model.id}>
@@ -678,6 +689,11 @@ const AppContent: React.FC = () => {
                   </MenuItem>
                 ))}
               </Select>
+              {!selectedModel && (
+                <Typography variant="caption" color="error" sx={{ mt: 0.5 }}>
+                  {t('model.required')}
+                </Typography>
+              )}
             </FormControl>
 
             <FormControl fullWidth>
