@@ -212,6 +212,17 @@ const AppContent: React.FC = () => {
             window.lastCalculatedDuration = newDuration;
             setTotalDuration(window.lastCalculatedDuration);
             durationFound = true;
+            // デバッグ情報をログに追加（重複を防ぐため、同じメッセージが連続しないようにする）
+            setLogs(prev => {
+              const lastLog = prev[prev.length - 1];
+              if (lastLog && lastLog.message === `FFmpegから総再生時間を取得: ${newDuration}秒`) {
+                return prev;
+              }
+              return [...prev, {
+                type: 'debug',
+                message: `FFmpegから総再生時間を取得: ${newDuration}秒`
+              }];
+            });
           }
         }
       });
@@ -282,7 +293,12 @@ const AppContent: React.FC = () => {
             const segments = parseResponse(result);
             if (segments.length > 0) {
               // 最初のセグメントが到着したら文字起こしモードに切り替え
-              if (!isTranscribing && !hasEnteredTranscriptionMode) {
+              if (!isTranscribing && !hasEnteredTranscriptionMode && segments.length > 0) {
+                // 総再生時間を設定（window.lastCalculatedDurationを優先）
+                const duration = window.lastCalculatedDuration || segments[0].end * 10;
+                setTotalDuration(duration);
+
+                // 文字起こしモードに切り替え
                 setIsTranscribing(true);
                 setHasEnteredTranscriptionMode(true);
                 setCurrentStep('transcribing');
@@ -293,10 +309,15 @@ const AppContent: React.FC = () => {
 
               // 最後のセグメントの終了時間を取得
               const lastSegment = segments[segments.length - 1];
+
+              // lastEndTimeの更新を先に行う（異常値を防ぐ）
               if (lastSegment.end > lastEndTime) {
-                setLastEndTime(lastSegment.end);
-                // 進捗を計算（最後のセグメントの終了時間 / 総再生時間）
-                const transcriptionProgress = Math.min(100, (lastSegment.end / totalDuration) * 100);
+                // 前回の終了時間を更新
+                const newLastEndTime = lastSegment.end;
+                setLastEndTime(newLastEndTime);
+                
+                // 進捗を計算（最後のセグメントの終了時間 / window.lastCalculatedDuration）
+                const transcriptionProgress = Math.min(100, (newLastEndTime / (window.lastCalculatedDuration || totalDuration)) * 100);
                 setStepProgress(transcriptionProgress);
 
                 // 進捗が0より大きい場合のみ表示
@@ -305,8 +326,8 @@ const AppContent: React.FC = () => {
                 }
               }
 
-              // 文字起こしが完了したかチェック
-              if (lastSegment.end >= totalDuration) {
+              // 文字起こしが完了したかチェック（最後のセグメントの終了時間が総再生時間の95%以上の場合）
+              if (lastSegment.end >= (window.lastCalculatedDuration || totalDuration) * 0.95) {
                 setStepProgress(100);
                 setStatus(t('processing.transcribing') + ' (100.0%)');
               }
