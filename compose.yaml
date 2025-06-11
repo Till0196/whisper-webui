@@ -1,0 +1,13 @@
+services:
+  whisper-webui:
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    image: ghcr.io/till0196/whisper-webui:latest
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_WHISPER_API_URL: ${VITE_WHISPER_API_URL}
+      VITE_USE_SERVER_PROXY: ${VITE_USE_SERVER_PROXY:-true}
+      VITE_SERVER_PROXY_URL: ${VITE_SERVER_PROXY_URL}
+      VITE_APP_TITLE: ${VITE_APP_TITLE:-Whisper WebUI}

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Audio transcription web application powered by Whisper" />
+    <meta name="theme-color" content="#000000" />
+    <title>Whisper WebUI</title>
+    <script>
+      // URLパラメータから環境変数を設定
+      const urlParams = new URLSearchParams(window.location.search);
+      const proxyTarget = urlParams.get('proxyTarget');
+      if (proxyTarget) {
+        window.__VITE_SERVER_PROXY_URL__ = proxyTarget;
+      }
+
+      // ブラウザの言語設定を取得
+      const browserLanguage = navigator.language.toLowerCase();
+      const initialLanguage = browserLanguage.startsWith('ja') ? 'ja' : 'en';
+      
+      // 言語設定をローカルストレージに保存（初回のみ）
+      if (!localStorage.getItem('language')) {
+        localStorage.setItem('language', initialLanguage);
+      }
+
+      // descriptionを言語に応じて設定
+      const description = initialLanguage === 'ja' 
+        ? '音声文字起こしWebアプリケーション' 
+        : 'Audio transcription web application powered by Whisper';
+      document.querySelector('meta[name="description"]').setAttribute('content', description);
+    </script>
+  </head>
+  <body>
+    <noscript>
+      <div style="text-align: center; padding: 20px;">
+        <p>このアプリケーションを実行するにはJavaScriptを有効にする必要があります。</p>
+        <p>You need to enable JavaScript to run this application.</p>
+      </div>
+    </noscript>
+    <div id="root"></div>
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html> 

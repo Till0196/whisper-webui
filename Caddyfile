@@ -1,0 +1,85 @@
+# グローバル設定
+{
+    # エラーログをJSONフォーマットで出力
+    log {
+        format json
+    }
+    # 自動HTTPS無効（コンテナ内で使用するため）
+    auto_https off
+    # グローバルオプションを環境変数から読み込み
+    {$CADDY_GLOBAL_OPTIONS}
+}
+
+# メインサーバー設定
+:3000 {
+    # ルートディレクトリ設定
+    root * /srv
+
+    # セキュリティヘッダー
+    header {
+        # XSS保護
+        X-XSS-Protection "1; mode=block"
+        # クリックジャッキング防止
+        X-Frame-Options "SAMEORIGIN"
+        # MIMEタイプスニッフィング防止
+        X-Content-Type-Options "nosniff"
+        # HSTS（HTTPSを使用しない場合はコメントアウト推奨）
+        # Strict-Transport-Security "max-age=31536000;"
+    }
+
+    # 静的ファイルの圧縮
+    encode gzip zstd
+
+    # Whisper APIのプロキシ設定（Viteの設定と同等）
+    handle /whisper/* {
+        uri strip_prefix /whisper
+        reverse_proxy {$VITE_SERVER_PROXY_URL} {
+            # Viteのproxy設定と同じヘッダー設定
+            header_up Host {upstream_hostport}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            # オリジナルのUser-Agentを保持
+            header_up User-Agent {>User-Agent}
+        }
+    }
+
+    # 静的ファイルのキャッシュ設定
+    @static {
+        path /assets/* /manifest.json
+        path *.ico *.png *.svg *.webp *.jpg *.jpeg *.gif
+        path *.js *.css *.woff *.woff2 *.ttf
+    }
+    header @static {
+        Cache-Control "public, max-age=31536000, immutable"
+        # ETags for better caching
+        ETag
+    }
+
+    # API以外のパスをSPAのindex.htmlにフォールバック
+    @spa {
+        not path /whisper/*
+        not path /assets/*
+        not path *.ico *.png *.svg *.webp *.jpg *.jpeg *.gif
+        not path *.js *.css *.woff *.woff2 *.ttf
+        not path /manifest.json
+        file {
+            try_files {path} /index.html
+        }
+    }
+
+    # 静的ファイルの配信
+    file_server
+
+    # エラーハンドリング
+    handle_errors {
+        # 404エラーもSPAにルーティング（必要に応じて）
+        @404 expression {err.status_code} == 404
+        rewrite @404 /index.html
+        file_server @404
+        
+        # その他のエラー
+        respond "{err.status_code} {err.status_text}"
+    }
+}

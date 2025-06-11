@@ -1,0 +1,12 @@
+{
+  "appTitle": "Whisper Web UI",
+  "processing": {
+    "initializingFFmpeg": "Initializing FFmpeg...",
+    "converting": "Converting audio file",
+    "splitting": "Splitting file",
+    "transcribing": "Transcribing",
+    "uploading": "Uploading",
+    "complete": "Complete",
+    "error": "Error occurred"
+  }
+} 

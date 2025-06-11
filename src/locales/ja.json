@@ -1,0 +1,12 @@
+{
+  "appTitle": "Whisper Web UI",
+  "processing": {
+    "initializingFFmpeg": "FFmpegを初期化中...",
+    "converting": "音声ファイルを変換中",
+    "splitting": "ファイルを分割中",
+    "transcribing": "文字起こし中",
+    "uploading": "アップロード中",
+    "complete": "処理完了",
+    "error": "エラーが発生しました"
+  }
+} 
