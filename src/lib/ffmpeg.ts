@@ -28,6 +28,15 @@ const setupLogHandler = (ffmpeg: FFmpeg, onLog?: (message: string) => void) => {
   }
 };
 
+// ログハンドラーを削除する関数
+const removeLogHandler = (ffmpeg: FFmpeg) => {
+  const existingHandler = logHandlers.get(ffmpeg);
+  if (existingHandler) {
+    ffmpeg.off('log', existingHandler);
+    logHandlers.delete(ffmpeg);
+  }
+};
+
 /**
  * FFmpegの事前初期化を行う
  * ページ読み込み時に呼び出して、後の処理を高速化する
@@ -38,6 +47,10 @@ export const preInitializeFFmpeg = async (
 ): Promise<FFmpeg> => {
   // 既に初期化済みの場合はそのインスタンスを返す
   if (isInitialized && globalFFmpegInstance) {
+    // 既存のインスタンスに対して、新しいログハンドラーを設定
+    if (onLog) {
+      setupLogHandler(globalFFmpegInstance, onLog);
+    }
     return globalFFmpegInstance;
   }
 
@@ -172,6 +185,8 @@ export const convertToWav = async (
         onLog(message);
       }
     };
+    
+    // 一時的にログハンドラーを設定
     ffmpeg.on('log', logHandler);
 
     const inputFileName = 'input.' + file.name.split('.').pop();
@@ -207,6 +222,8 @@ export const convertToWav = async (
     // クリーンアップ
     await ffmpeg.deleteFile(inputFileName);
     await ffmpeg.deleteFile(outputFileName);
+    
+    // ログハンドラーを削除
     ffmpeg.off('log', logHandler);
 
     // 音声の長さが取得できない場合はWAVヘッダーから計算
@@ -245,6 +262,8 @@ export const splitIntoChunks = async (
       if (onProgress) {
         onProgress(100);
       }
+      // ログハンドラーが必要なくなったので削除
+      removeLogHandler(ffmpeg);
       return [wavData];
     }
 
@@ -312,9 +331,14 @@ export const splitIntoChunks = async (
     if (chunks.length === 0) {
       chunks.push(wavData);
     }
+
+    // ログハンドラーを削除
+    removeLogHandler(ffmpeg);
     
     return chunks;
   } catch (error) {
+    // エラー時もログハンドラーを削除
+    removeLogHandler(ffmpeg);
     throw new Error(`Chunk splitting failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
@@ -328,13 +352,16 @@ export const getAudioDuration = async (
     let duration = 0;
     let logMessages: string[] = [];
 
-    // ログハンドラーを設定
-    setupLogHandler(ffmpeg, (message: string) => {
+    // 専用のログハンドラーを作成
+    const logHandler = (message: string) => {
       logMessages.push(message);
       if (onLog) {
         onLog(message);
       }
-    });
+    };
+
+    // ログハンドラーを設定
+    setupLogHandler(ffmpeg, logHandler);
 
     const inputFileName = 'duration_check.wav';
     
@@ -382,8 +409,13 @@ export const getAudioDuration = async (
       }
     }
     
+    // ログハンドラーを削除
+    removeLogHandler(ffmpeg);
+    
     return Math.max(duration, 0); // 負の値を防ぐ
   } catch (error) {
+    // エラー時もログハンドラーを削除
+    removeLogHandler(ffmpeg);
     throw new Error(`Duration calculation failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 };

@@ -20,40 +20,31 @@ import InfoIcon from '@mui/icons-material/Info';
 import LockIcon from '@mui/icons-material/Lock';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
-import { 
-  useApiStatus,
-  useServerConfig,
-  useServerConfigUpdater
-} from '../store/useAppStore';
 import { useConfig } from '../hooks/useConfig';
+import { ApiStatus } from '../types';
 
-const ServerSettings: React.FC = () => {
+interface ServerSettingsProps {
+  apiStatus?: ApiStatus;
+  onSettingsChange?: () => void;
+}
+
+const ServerSettings: React.FC<ServerSettingsProps> = ({ apiStatus, onSettingsChange }) => {
   const { t } = useTranslation();
   
-  // 設定を取得（認証情報表示制御とプロキシモード制御を含む）
-  const { config, forceProxyDisabled, canEditCredentials } = useConfig();
-  
-  // 状態を購読（変更時のみ再レンダリング）
-  const apiStatus = useApiStatus();
-  const serverConfig = useServerConfig();
-  
-  // 状態更新用のディスパッチャー（再レンダリングなし）
-  const updateServerConfig = useServerConfigUpdater();
+  // 設定を統一的に取得
+  const { config, forceProxyDisabled, proxyLocked, canEditCredentials, updateConfig } = useConfig();
   
   const [isExpanded, setIsExpanded] = useState(false);
   const [showApiToken, setShowApiToken] = useState(false);
   
-  // プロキシの制約状況を計算
-  const proxyLocked = config.hideCredentials || !config.allowCredentialEdit;
-  
   // 実際のプロキシ状態を計算（制約を考慮）
-  const effectiveUseServerProxy = proxyLocked ? true : (forceProxyDisabled ? false : serverConfig.useServerProxy);
+  const effectiveUseServerProxy = proxyLocked ? true : (forceProxyDisabled ? false : config.useServerProxy);
   
   // 一時設定（ユーザーが編集中の値）
   const [tempSettings, setTempSettings] = useState({
-    apiUrl: serverConfig.apiUrl,
-    apiToken: serverConfig.apiToken,
-    useAuth: serverConfig.useAuth,
+    apiUrl: config.whisperApiUrl || '',
+    apiToken: config.whisperApiToken || '',
+    useAuth: !!config.whisperApiToken,
     useServerProxy: effectiveUseServerProxy
   });
   
@@ -63,7 +54,7 @@ const ServerSettings: React.FC = () => {
   
   // 初期状態の設定
   const defaultSettings = {
-    apiUrl: import.meta.env.VITE_WHISPER_API_URL || 'http://localhost:9000',
+    apiUrl: import.meta.env.VITE_WHISPER_API_URL || '',
     apiToken: import.meta.env.VITE_WHISPER_API_TOKEN || '',
     useAuth: !!import.meta.env.VITE_WHISPER_API_TOKEN,
     useServerProxy: config.useServerProxy
@@ -71,27 +62,27 @@ const ServerSettings: React.FC = () => {
   
   // 初期設定が未設定の場合は自動的に設定パネルを開く
   useEffect(() => {
-    if (!serverConfig.apiUrl || serverConfig.apiUrl === 'http://localhost:9000') {
+    if (!config.whisperApiUrl) {
       setIsExpanded(true);
     }
-  }, [serverConfig.apiUrl]);
+  }, [config.whisperApiUrl]);
 
   // 親コンポーネントの設定が変更されたら一時設定も更新
   useEffect(() => {
     setTempSettings({
-      apiUrl: serverConfig.apiUrl,
-      apiToken: serverConfig.apiToken,
-      useAuth: serverConfig.useAuth,
-      useServerProxy: serverConfig.useServerProxy // 制約適用前の実際の値を使用
+      apiUrl: config.whisperApiUrl || '',
+      apiToken: config.whisperApiToken || '',
+      useAuth: !!config.whisperApiToken,
+      useServerProxy: config.useServerProxy // 制約適用前の実際の値を使用
     });
-  }, [serverConfig.apiUrl, serverConfig.apiToken, serverConfig.useAuth, serverConfig.useServerProxy]);
+  }, [config.whisperApiUrl, config.whisperApiToken, config.useServerProxy]);
 
   // 設定に変更があるかどうかを確認（現在の設定と初期状態の両方と比較）
   const hasChanges = 
-    tempSettings.apiUrl !== serverConfig.apiUrl ||
-    tempSettings.apiToken !== serverConfig.apiToken ||
-    tempSettings.useAuth !== serverConfig.useAuth ||
-    tempSettings.useServerProxy !== serverConfig.useServerProxy ||
+    tempSettings.apiUrl !== (config.whisperApiUrl || '') ||
+    tempSettings.apiToken !== (config.whisperApiToken || '') ||
+    tempSettings.useAuth !== !!config.whisperApiToken ||
+    tempSettings.useServerProxy !== config.useServerProxy ||
     tempSettings.apiUrl !== defaultSettings.apiUrl ||
     tempSettings.apiToken !== defaultSettings.apiToken ||
     tempSettings.useAuth !== defaultSettings.useAuth ||
@@ -104,11 +95,10 @@ const ServerSettings: React.FC = () => {
       ? true 
       : (forceProxyDisabled ? false : tempSettings.useServerProxy);
       
-    // 設定を更新（useServerConfigUpdaterが制約を適用してくれる）
-    updateServerConfig({
-      apiUrl: tempSettings.apiUrl,
-      apiToken: tempSettings.apiToken,
-      useAuth: tempSettings.useAuth,
+    // 設定を更新（updateConfigが制約を適用してくれる）
+    updateConfig({
+      whisperApiUrl: tempSettings.apiUrl,
+      whisperApiToken: tempSettings.apiToken,
       useServerProxy: finalUseServerProxy
     });
     
@@ -117,13 +107,20 @@ const ServerSettings: React.FC = () => {
       ...prev,
       useServerProxy: finalUseServerProxy
     }));
+
+    // 設定変更を親コンポーネントに通知
+    if (onSettingsChange) {
+      onSettingsChange();
+    }
   };
 
-  // 設定を初期値にリセット
+  // 設定を現在の適用値（config.jsまたは環境変数）にリセット
   const handleReset = () => {
     setTempSettings({
-      ...defaultSettings,
-      useServerProxy: defaultSettings.useServerProxy // 制約適用前の値を使用
+      apiUrl: config.whisperApiUrl || '',
+      apiToken: config.whisperApiToken || '',
+      useAuth: !!config.whisperApiToken,
+      useServerProxy: config.useServerProxy
     });
   };
 
@@ -166,7 +163,7 @@ const ServerSettings: React.FC = () => {
       <Collapse in={isExpanded}>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {/* 設定が未設定の場合の警告 */}
-          {!serverConfig.apiUrl && (
+          {!config.whisperApiUrl && (
             <Alert severity="info" sx={{ mb: 2 }}>
               <AlertTitle>{t('serverSettings.initialSetup')}</AlertTitle>
               {t('serverSettings.initialSetupMessage')}
@@ -315,7 +312,7 @@ const ServerSettings: React.FC = () => {
             </Button>
           </Box>
 
-          {apiStatus.status !== 'unknown' && (
+          {apiStatus && apiStatus.status !== 'unknown' && (
             <Alert severity={apiStatus.status === 'healthy' ? 'success' : 'error'} sx={{ mt: 2 }}>
               <AlertTitle>{t(`apiStatus.${apiStatus.status}`)}</AlertTitle>
               <Box sx={{ mb: 1 }}>{t(`apiStatus.message.${apiStatus.status === 'healthy' ? 'success' : 'error'}`)}</Box>

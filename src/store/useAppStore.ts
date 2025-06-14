@@ -1,5 +1,5 @@
 import { StateStore, useStateSelector, useStateUpdater } from '../hooks/useStateManager';
-import { AppState, createInitialAppState, selectApiStatus, selectUseTemperature, selectTemperature, selectUseVadFilter, selectPrompt, selectHotwords, selectServerConfig, selectFFmpegPreInitStatus, selectApiConfig } from './appState';
+import { AppState, createInitialAppState, selectApiStatus, selectUseTemperature, selectTemperature, selectUseVadFilter, selectPrompt, selectHotwords, selectFFmpegPreInitStatus } from './appState';
 import { useCallback } from 'react';
 
 // グローバルストア（シングルトン）
@@ -69,29 +69,11 @@ export function useHotwords() {
 }
 
 /**
- * サーバー設定を購読するhook
- */
-export function useServerConfig() {
-  const store = useAppStore();
-  const stableSelector = useCallback(selectServerConfig, []);
-  return useStateSelector(store, stableSelector);
-}
-
-/**
  * FFmpeg初期化状態を購読するhook
  */
 export function useFFmpegPreInitStatus() {
   const store = useAppStore();
   const stableSelector = useCallback(selectFFmpegPreInitStatus, []);
-  return useStateSelector(store, stableSelector);
-}
-
-/**
- * API設定を購読するhook（複合セレクター）
- */
-export function useApiConfig() {
-  const store = useAppStore();
-  const stableSelector = useCallback(selectApiConfig, []);
   return useStateSelector(store, stableSelector);
 }
 
@@ -145,50 +127,6 @@ export function useHotwordsUpdater() {
   const dispatcher = useAppStateDispatcher();
   return (hotwords: string[]) => {
     dispatcher({ hotwords });
-  };
-}
-
-export function useServerConfigUpdater() {
-  const dispatcher = useAppStateDispatcher();
-  return (serverConfig: AppState['serverConfig']) => {
-    // 制約に基づいて最終的な設定を決定
-    // これにより、useServerConfigUpdaterを呼ぶ側で制約を考慮しなくても、
-    // 常に正しい状態が適用される
-    const forceProxyDisabled = import.meta.env.VITE_USE_SERVER_PROXY === 'false';
-    const hideCredentials = import.meta.env.VITE_HIDE_CREDENTIALS === 'true';
-    const allowCredentialEdit = import.meta.env.VITE_ALLOW_CREDENTIAL_EDIT !== 'false';
-    
-    // 制約を考慮した最終的なuseServerProxy値を決定
-    let finalUseServerProxy = serverConfig.useServerProxy;
-    
-    if (hideCredentials || !allowCredentialEdit) {
-      // 認証情報保護またはクレデンシャル編集不可の場合はプロキシを強制
-      finalUseServerProxy = true;
-    } else if (forceProxyDisabled) {
-      // 強制無効設定の場合はプロキシを無効
-      finalUseServerProxy = false;
-    }
-    
-    const finalServerConfig = {
-      ...serverConfig,
-      useServerProxy: finalUseServerProxy
-    };
-    
-    dispatcher({ serverConfig: finalServerConfig });
-    
-    // LocalStorageに保存
-    const saveToLocalStorageOrRemove = (key: string, value: string | boolean, defaultValue: string | boolean) => {
-      if (value === defaultValue) {
-        localStorage.removeItem(key);
-      } else {
-        localStorage.setItem(key, value.toString());
-      }
-    };
-
-    saveToLocalStorageOrRemove('apiUrl', finalServerConfig.apiUrl, import.meta.env.VITE_WHISPER_API_URL || 'http://localhost:9000');
-    saveToLocalStorageOrRemove('apiToken', finalServerConfig.apiToken, import.meta.env.VITE_WHISPER_API_TOKEN || '');
-    saveToLocalStorageOrRemove('useAuth', finalServerConfig.useAuth, false);
-    saveToLocalStorageOrRemove('useServerProxy', finalServerConfig.useServerProxy, import.meta.env.VITE_USE_SERVER_PROXY === 'true');
   };
 }
 

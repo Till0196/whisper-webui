@@ -129,7 +129,7 @@ export class TranscriptionService {
     file: File,
     options: TranscriptionOptions,
     apiConfig: {
-      baseUrl: string;
+      baseUrl: string | undefined;
       token?: string;
       useServerProxy: boolean;
     }
@@ -391,7 +391,7 @@ export class TranscriptionService {
     chunks: Uint8Array[],
     options: TranscriptionOptions,
     apiConfig: {
-      baseUrl: string;
+      baseUrl: string | undefined;
       token?: string;
       useServerProxy: boolean;
     },
@@ -543,11 +543,16 @@ export class TranscriptionService {
           }
         };
 
+        // APIベースURLが設定されていない場合はエラー
+        if (!apiConfig.baseUrl) {
+          throw new Error('API base URL is not configured');
+        }
+
         // ブラウザ拡張機能のエラーを無視するためのラッパー
         const transcribeWithRetry = async (retryCount = 0): Promise<any> => {
           try {
             return await transcribeAudioChunk(
-              apiConfig.baseUrl,
+              apiConfig.baseUrl as string,
               chunk,
               i,
               options,

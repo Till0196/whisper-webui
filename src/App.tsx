@@ -1,12 +1,11 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useMemo, useState } from 'react';
 import { Box, Container, Typography, ThemeProvider, CssBaseline, AppBar, Toolbar, Stack } from '@mui/material';
 import { getApiEndpoint, fetchApiOptions, checkApiHealth, API_ENDPOINTS } from './lib/whisperApi';
 import { preInitializeFFmpeg, getFFmpegInitializationStatus } from './lib/ffmpeg';
 import { 
   useCreateAppState, 
+  useApiStatus,
   useApiStatusUpdater, 
-  useServerConfig,
-  useApiConfig,
   useFFmpegPreInitStatusUpdater,
   useTemperatureSettings,
   useVadFilter,
@@ -17,12 +16,10 @@ import { useCreateThemeState } from './store/useThemeStore';
 import { useCreateTranscriptionState } from './store/useTranscriptionStore';
 import { 
   useCreateApiOptionsState,
-  useApiOptions,
   useSelectedModel,
   useApiOptionsUpdater,
   useSelectedModelUpdater,
   useApiOptionsLoadingUpdater,
-  useUserSettings,
   useTranscriptionOptionsFromApiState
 } from './store/useApiOptionsStore';
 import ServerSettings from "./components/ServerSettings";
@@ -38,7 +35,6 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from './hooks/useTheme';
 import { useTranscription } from './hooks/useTranscription';
 import { useConfig } from './hooks/useConfig';
-import { useCreateConfigState } from './store/useConfigStore';
 import './i18n';
 
 declare global {
@@ -65,11 +61,16 @@ const AppContent: React.FC = () => {
   // 設定を読み込み - 使用可能な値とエラーを取得
   const { config, loading, error, forceProxyDisabled } = useConfig();
 
+  // API状態を購読
+  const apiStatus = useApiStatus();
+
+  // 設定変更トリガー用の状態
+  const [lastConfigHash, setLastConfigHash] = useState('');
+
   // 状態管理ストアの初期化（再レンダリングなし）
   useCreateAppState();
   useCreateThemeState();
   useCreateTranscriptionState();
-  useCreateConfigState();
   useCreateApiOptionsState();
 
   // 状態更新用のディスパッチャー（再レンダリングなし）
@@ -80,10 +81,14 @@ const AppContent: React.FC = () => {
   const setApiOptionsLoading = useApiOptionsLoadingUpdater();
 
   // 必要な状態のみを購読（該当する状態が変更された時のみ再レンダリング）
-  const serverConfig = useServerConfig();
   const selectedModel = useSelectedModel();
-  const apiOptions = useApiOptions();
-  const apiConfig = useApiConfig();
+  
+  // API設定を動的に生成（useConfigから）- useMemoで最適化
+  const apiConfig = useMemo(() => ({
+    baseUrl: config.useServerProxy ? '/whisper' : (config.whisperApiUrl || undefined),
+    token: config.whisperApiToken || undefined,
+    useServerProxy: config.useServerProxy
+  }), [config.useServerProxy, config.whisperApiUrl, config.whisperApiToken]);
   
   // アプリ設定を取得
   const temperatureSettings = useTemperatureSettings();
@@ -103,11 +108,11 @@ const AppContent: React.FC = () => {
   // プロキシURLの取得
   const getProxyUrl = useCallback(() => {
     // プロキシが強制無効の場合や設定がオフの場合はapiUrlを使用
-    if (forceProxyDisabled || !serverConfig.useServerProxy) {
-      return serverConfig.apiUrl;
+    if (forceProxyDisabled || !config.useServerProxy) {
+      return config.whisperApiUrl || '';
     }
     return '/whisper'; // プロキシパス
-  }, [serverConfig, forceProxyDisabled]);
+  }, [config.useServerProxy, config.whisperApiUrl, forceProxyDisabled]);
 
   // APIオプションとステータスの取得（サーバー設定変更時のみ）
   const fetchApiData = useCallback(async () => {
@@ -117,17 +122,18 @@ const AppContent: React.FC = () => {
       
       // 設定から適切なURLを取得
       const proxyUrl = getProxyUrl();
-      const useProxyMode = !forceProxyDisabled && serverConfig.useServerProxy;
+      const useProxyMode = !forceProxyDisabled && config.useServerProxy;
       const url = getApiEndpoint(proxyUrl, API_ENDPOINTS.OPTIONS, useProxyMode);
       
       // 認証有無に基づいてAPIオプションを取得
-      const options = await fetchApiOptions(url, serverConfig.useAuth ? serverConfig.apiToken : undefined);
+      const apiToken = config.whisperApiToken || undefined;
+      const options = await fetchApiOptions(url, apiToken);
       
       // APIオプション更新（ローカルストレージとの照合も含む）
       updateApiOptions(options);
       
       // ヘルスチェック実行
-      const healthStatus = await checkApiHealth(proxyUrl, serverConfig.useAuth ? serverConfig.apiToken : undefined);
+      const healthStatus = await checkApiHealth(proxyUrl, apiToken);
       updateApiStatus(healthStatus);
 
       // ヘルスチェックが成功し、モデルが未選択の場合は最初のモデルを選択
@@ -148,7 +154,23 @@ const AppContent: React.FC = () => {
       // ローディング終了
       setApiOptionsLoading(false);
     }
-  }, [serverConfig, getProxyUrl, updateApiStatus, updateApiOptions, updateSelectedModel, selectedModel, forceProxyDisabled, setApiOptionsLoading]);
+  }, [getProxyUrl, config.useServerProxy, config.whisperApiToken, updateApiStatus, updateApiOptions, updateSelectedModel, selectedModel, forceProxyDisabled, setApiOptionsLoading]);
+
+  // 設定変更時にAPIフェッチをトリガーするためのハンドラー
+  const handleServerSettingsChange = useCallback(() => {
+    const newConfigHash = JSON.stringify({
+      url: config.whisperApiUrl,
+      token: config.whisperApiToken,
+      proxy: config.useServerProxy
+    });
+    
+    if (newConfigHash !== lastConfigHash) {
+      setLastConfigHash(newConfigHash);
+      if (config.whisperApiUrl || config.useServerProxy) {
+        fetchApiData();
+      }
+    }
+  }, [config.whisperApiUrl, config.whisperApiToken, config.useServerProxy, lastConfigHash, fetchApiData]);
 
   const handleLanguageChange = useCallback((language: string) => {
     i18n.changeLanguage(language);
@@ -167,10 +189,19 @@ const AppContent: React.FC = () => {
     await processFile(file, transcriptionOptions, apiConfig);
   }, [selectedModel, resetProgress, processFile, transcriptionOptions, apiConfig]);
 
-  // 初回マウント時とサーバー設定変更時のみAPIデータを取得
+  // 初回マウント時のみAPIデータを取得
   useEffect(() => {
-    fetchApiData();
-  }, [fetchApiData]);
+    // 必要な設定が揃っている場合のみAPIデータを取得
+    if (apiConfig.baseUrl && !lastConfigHash) {
+      const initialConfigHash = JSON.stringify({
+        url: config.whisperApiUrl,
+        token: config.whisperApiToken,
+        proxy: config.useServerProxy
+      });
+      setLastConfigHash(initialConfigHash);
+      fetchApiData();
+    }
+  }, [apiConfig.baseUrl, config.whisperApiUrl, config.whisperApiToken, config.useServerProxy, lastConfigHash, fetchApiData]);
 
   // FFmpegの事前初期化（ページ読み込み時に実行）
   useEffect(() => {
@@ -223,20 +254,6 @@ const AppContent: React.FC = () => {
     
     return () => clearTimeout(timer);
   }, [updateFFmpegPreInitStatus]); // 初回マウント時のみ実行
-  
-  // ロード中表示
-  if (loading) {
-    return (
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <Container maxWidth="lg" sx={{ py: 4 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
-            <Typography variant="h6">設定をロード中...</Typography>
-          </Box>
-        </Container>
-      </ThemeProvider>
-    );
-  }
 
   // 設定エラーがある場合の表示
   if (error.hasError) {
@@ -272,7 +289,10 @@ const AppContent: React.FC = () => {
         </Box>
 
         <Box sx={{ mb: 4 }}>
-          <ServerSettings />
+          <ServerSettings 
+            apiStatus={apiStatus}
+            onSettingsChange={handleServerSettingsChange}
+          />
         </Box>
 
         <Box sx={{ mb: 4 }}>

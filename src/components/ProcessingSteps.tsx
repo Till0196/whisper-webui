@@ -108,7 +108,6 @@ const ProcessingSteps: React.FC = () => {
   const { t } = useTranslation();
   const store = useTranscriptionStore();
   const steps = useStateSelector<TranscriptionState, ProcessingSteps>(store, selectProcessingSteps);
-  const isProcessing = useStateSelector<TranscriptionState, boolean>(store, selectIsProcessing);
 
   // すべてのステップを順序立てて表示
   const allSteps: ProcessingStep[] = [

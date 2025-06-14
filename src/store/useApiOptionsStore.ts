@@ -5,15 +5,13 @@ import {
   selectApiOptions, 
   selectUserSettings, 
   selectLoading, 
-  selectLastUpdated,
   selectSelectedModel,
   selectSelectedLanguage,
   selectSelectedTimestampGranularity,
   selectSelectedResponseFormat,
   saveApiOptionsToStorage,
   saveUserSettingsToStorage,
-  getValidatedUserSettings,
-  selectTranscriptionOptionsFromApiState
+  getValidatedUserSettings
 } from './apiOptionsState';
 import { ApiOptions } from '../types';
 import { useCallback, useMemo } from 'react';
@@ -204,7 +202,6 @@ export function useTranscriptionOptionsFromApiState(appSettings: {
   prompt: string;
   hotwords: string[];
 }) {
-  const store = useApiOptionsStore();
   const userSettings = useUserSettings();
   
   return useMemo(() => {

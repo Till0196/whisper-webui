@@ -1,16 +1,65 @@
 import { StateStore, useStateSelector, useStateUpdater } from '../hooks/useStateManager';
-import { ConfigState, createInitialConfigState, selectWhisperApiUrl, selectWhisperApiToken, selectUseServerProxy, selectServerProxyUrl, selectAppTitle, selectHealthCheckUrl, selectEnvironment, selectHideCredentials, selectAllowCredentialEdit, selectLoading, selectError, selectForceProxyDisabled, selectCanEditCredentials, selectConfig, saveToLocalStorage, getEffectiveProxyState, isProxyLocked } from './configState';
+import { ConfigState, createInitialConfigState, initializeConfigAsync, selectWhisperApiUrl, selectWhisperApiToken, selectUseServerProxy, selectServerProxyUrl, selectAppTitle, selectHealthCheckUrl, selectEnvironment, selectHideCredentials, selectAllowCredentialEdit, selectLoading, selectError, selectForceProxyDisabled, selectCanEditCredentials, selectConfig, saveToLocalStorage, getEffectiveProxyState, isProxyLocked, LOCAL_STORAGE_KEY } from './configState';
 import { useCallback } from 'react';
 
 // グローバルストア（シングルトン）
 const globalConfigStore = new StateStore(createInitialConfigState());
 
+// 初期化状態を管理
+let isConfigInitialized = false;
+let isConfigInitializing = false;
+let initializationPromise: Promise<void> | null = null;
+
 /**
- * 設定状態を作成するhook（Appコンポーネントでのみ使用）
+ * 設定の非同期初期化を実行
  */
-export function useCreateConfigState() {
-  return globalConfigStore;
-}
+export const initializeConfig = async (): Promise<void> => {
+  if (isConfigInitialized) {
+    return;
+  }
+  
+  if (isConfigInitializing && initializationPromise) {
+    return initializationPromise;
+  }
+  
+  isConfigInitializing = true;
+  
+  initializationPromise = (async () => {
+    try {
+      console.log('Starting config initialization...');
+      
+      // バックグラウンドで設定を初期化（ローディング状態にしない）
+      const initializedConfig = await initializeConfigAsync();
+      
+      // 設定を更新（loading状態は保持しない）
+      globalConfigStore.setState(prevState => ({
+        ...initializedConfig,
+        loading: false // 明示的にfalseに設定
+      }));
+      
+      console.log('Config initialization completed');
+      isConfigInitialized = true;
+    } catch (error) {
+      console.error('Failed to initialize config:', error);
+      
+      // エラー状態を設定（ローディングは止める）
+      globalConfigStore.setState(prevState => ({
+        ...prevState,
+        loading: false,
+        error: {
+          hasError: true,
+          errorType: 'config-load-error',
+          message: `Configuration initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+        }
+      }));
+    } finally {
+      isConfigInitializing = false;
+      initializationPromise = null;
+    }
+  })();
+  
+  return initializationPromise;
+};
 
 /**
  * 設定状態を取得するhook（状態変更通知なし）
@@ -157,27 +206,57 @@ export function useConfigUpdater() {
       updatedConfig.useServerProxy = false;
     }
 
-    // ローカルストレージに保存する値（機密情報は省略可能）
-    const configToSave: Partial<ConfigState> = {
-      useServerProxy: updatedConfig.useServerProxy !== undefined ? updatedConfig.useServerProxy : currentState.useServerProxy,
-      serverProxyUrl: updatedConfig.serverProxyUrl || currentState.serverProxyUrl,
-      // 認証情報は必要な場合のみ保存
-      ...((updatedConfig.allowCredentialEdit !== undefined ? updatedConfig.allowCredentialEdit : currentState.allowCredentialEdit) 
-        ? { 
-            whisperApiUrl: updatedConfig.whisperApiUrl || currentState.whisperApiUrl, 
-            whisperApiToken: updatedConfig.whisperApiToken || currentState.whisperApiToken
-          } 
-        : {})
-    };
+    // ローカルストレージに保存する値（ユーザーが変更した値のみ）
+    const configToSave: Partial<ConfigState> = {};
+    
+    // プロキシ設定はユーザーが変更可能
+    if (updatedConfig.useServerProxy !== undefined) {
+      configToSave.useServerProxy = updatedConfig.useServerProxy;
+    }
+    
+    // 認証情報は編集可能な場合のみ保存
+    if (currentState.allowCredentialEdit) {
+      if (updatedConfig.whisperApiUrl !== undefined) {
+        configToSave.whisperApiUrl = updatedConfig.whisperApiUrl;
+      }
+      if (updatedConfig.whisperApiToken !== undefined) {
+        configToSave.whisperApiToken = updatedConfig.whisperApiToken;
+      }
+    }
 
-    // 設定をローカルストレージに保存
-    saveToLocalStorage(configToSave);
+    // 設定をローカルストレージに保存（変更があった場合のみ）
+    if (Object.keys(configToSave).length > 0) {
+      saveToLocalStorage(configToSave);
+    }
     
     // 状態を更新
     updateState(updatedConfig);
   }, [updateState]);
 
   return updateConfig;
+}
+
+/**
+ * 設定をリセットするhook（ローカルストレージをクリア）
+ */
+export function useConfigReset() {
+  const store = useConfigStore();
+  const updateState = useStateUpdater(store);
+  
+  const resetConfig = useCallback(() => {
+    // ローカルストレージをクリア
+    try {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+    } catch (error) {
+      console.warn('Failed to clear config from localStorage:', error);
+    }
+    
+    // 初期状態に戻す
+    const initialState = createInitialConfigState();
+    updateState(initialState);
+  }, [updateState]);
+
+  return resetConfig;
 }
 
 /**

@@ -1,10 +1,10 @@
 #!/bin/sh
 
 # デフォルト値の設定
-export WHISPER_API_URL=${WHISPER_API_URL:-"http://localhost:9000"}
+export WHISPER_API_URL=${WHISPER_API_URL:-""}
 export WHISPER_API_TOKEN=${WHISPER_API_TOKEN:-""}
 export HIDE_CREDENTIALS=${HIDE_CREDENTIALS:-"false"}
-export SERVER_PROXY_URL=${SERVER_PROXY_URL:-"http://localhost:9000"}
+export SERVER_PROXY_URL=${SERVER_PROXY_URL:-""}
 export APP_TITLE=${APP_TITLE:-"Whisper WebUI"}
 export HEALTH_CHECK_URL=${HEALTH_CHECK_URL:-""}
 export ENVIRONMENT=${ENVIRONMENT:-"production"}
@@ -75,10 +75,15 @@ fi
 
 # プロキシ設定の処理
 if [ "${USE_SERVER_PROXY}" = "true" ]; then
-  if [ -n "${WHISPER_API_TOKEN}" ]; then
+  # HIDE_CREDENTIALS=falseの場合、認証情報がある場合でもクライアント側で直接APIを呼び出せるように
+  # プロキシではSERVER_PROXY_URLを使用し、認証はクライアント側で処理
+  if [ "${HIDE_CREDENTIALS}" = "false" ] && [ -n "${WHISPER_API_TOKEN}" ]; then
+    generate_proxy_config "${SERVER_PROXY_URL}" ""
+    echo "クライアント認証モード用のプロキシ設定ファイルを生成しました"
+  elif [ "${HIDE_CREDENTIALS}" = "true" ] && [ -n "${WHISPER_API_TOKEN}" ]; then
     generate_proxy_config "${WHISPER_API_URL}" "
         header_up Authorization \"Bearer ${WHISPER_API_TOKEN}\""
-    echo "認証トークン付きのプロキシ設定ファイルを生成しました"
+    echo "サーバー認証モード用のプロキシ設定ファイルを生成しました"
   else
     generate_proxy_config "${SERVER_PROXY_URL}" ""
     echo "標準プロキシ設定ファイルを生成しました"

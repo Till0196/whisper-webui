@@ -148,7 +148,7 @@ export const useTranscription = (t: (key: string, params?: any) => string) => {
     file: File,
     options: TranscriptionOptions,
     apiConfig: {
-      baseUrl: string;
+      baseUrl: string | undefined;
       token?: string;
       useServerProxy: boolean;
     }
