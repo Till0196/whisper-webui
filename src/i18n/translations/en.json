@@ -81,6 +81,7 @@
   },
   "processing": {
     "title": "Processing Status",
+    "status": "Processing Status",
     "uploading": "Uploading file...",
     "currentStep": "Current Step",
     "converting": "Extracting audio data...",
@@ -90,8 +91,12 @@
     "transcribing": "Transcribing...",
     "uploadingChunk": "Uploading chunk {{current}}/{{total}}...",
     "processingChunk": "Processing chunk {{current}}/{{total}}...",
+    "uploadingFile": "Uploading file...",
+    "processingFile": "Processing file...",
     "progress": "{{progress}}%",
     "overallProgress": "Overall Progress",
+    "currentProgress": "Current Progress",
+    "audioSplitting": "Splitting audio... {{progress}}%",
     "complete": "Processing completed",
     "error": "An error occurred",
     "time": "Processing time: {{time}} seconds",
@@ -103,6 +108,7 @@
     "fileValidation": "File Validation",
     "audioConversion": "Audio Conversion",
     "audioSplitting": "Audio Splitting",
+    "transcription": "Transcription",
     "chunkProcessing": "Processing Chunk {{current}}/{{total}}",
     "finalizing": "Finalizing"
   },
@@ -111,7 +117,8 @@
     "inProgress": "In Progress",
     "completed": "Completed",
     "error": "Error",
-    "skipped": "Skipped"
+    "skipped": "Skipped",
+    "transcribing": "Transcribing..."
   },
   "result": {
     "title": "Transcription Results",
