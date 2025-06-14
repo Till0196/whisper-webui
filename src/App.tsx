@@ -1,20 +1,45 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { Box, Container, Typography, Paper, Alert, ThemeProvider, createTheme, CssBaseline, FormControl, InputLabel, Select, MenuItem, SelectChangeEvent, Button, Slider, FormControlLabel, LinearProgress, TextField, Switch, Collapse, CircularProgress, Chip, Stack } from '@mui/material';
-import { useDropzone } from 'react-dropzone';
-import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { TranscriptionSegment, LogEntry, ApiStatus, ApiOptions } from './types';
-import { checkApiHealth, fetchApiOptions, API_ENDPOINTS } from './api';
-import { convertToWav, splitIntoChunks } from './utils/ffmpeg';
-import { parseResponse, downloadTranscription, formatTime } from './utils/transcription';
-import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
-import { LANGUAGE_NAMES } from './constants/languages';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import DownloadIcon from '@mui/icons-material/Download';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import ErrorIcon from '@mui/icons-material/Error';
-import ButtonGroup from '@mui/material/ButtonGroup';
-import Tooltip from '@mui/material/Tooltip';
+import React, { useEffect, useCallback } from 'react';
+import { Box, Container, Typography, ThemeProvider, CssBaseline, AppBar, Toolbar, Stack } from '@mui/material';
+import { getApiEndpoint, fetchApiOptions, checkApiHealth, API_ENDPOINTS } from './lib/whisperApi';
+import { preInitializeFFmpeg, getFFmpegInitializationStatus } from './lib/ffmpeg';
+import { 
+  useCreateAppState, 
+  useApiStatusUpdater, 
+  useServerConfig,
+  useApiConfig,
+  useFFmpegPreInitStatusUpdater,
+  useTemperatureSettings,
+  useVadFilter,
+  usePrompt,
+  useHotwords
+} from './store/useAppStore';
+import { useCreateThemeState } from './store/useThemeStore';
+import { useCreateTranscriptionState } from './store/useTranscriptionStore';
+import { 
+  useCreateApiOptionsState,
+  useApiOptions,
+  useSelectedModel,
+  useApiOptionsUpdater,
+  useSelectedModelUpdater,
+  useApiOptionsLoadingUpdater,
+  useUserSettings,
+  useTranscriptionOptionsFromApiState
+} from './store/useApiOptionsStore';
+import ServerSettings from "./components/ServerSettings";
+import { TranscriptionSettings } from './components/TranscriptionSettings';
+import { FileUpload } from './components/FileUpload';
+import ProcessingStatus from './components/ProcessingStatus';
+import { TranscriptionResult } from './components/TranscriptionResult';
+import { LanguageSelector } from './components/LanguageSelector';
+import { ThemeSelector } from './components/ThemeSelector';
+import ConfigErrorDisplay from './components/ConfigErrorDisplay';
+import Logs from './components/Logs';
+import { useTranslation } from 'react-i18next';
+import { useTheme } from './hooks/useTheme';
+import { useTranscription } from './hooks/useTranscription';
+import { useConfig } from './hooks/useConfig';
+import { useCreateConfigState } from './store/useConfigStore';
+import './i18n';
 
 declare global {
   interface Window {
@@ -23,983 +48,277 @@ declare global {
 }
 
 const AppContent: React.FC = () => {
-  const { language, setLanguage, t } = useLanguage();
-  const [transcription, setTranscription] = useState<TranscriptionSegment[]>([]);
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [progress, setProgress] = useState<number>(0);
-  const [status, setStatus] = useState<string>('');
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [processingTime, setProcessingTime] = useState<number | null>(null);
-  const [isProcessingComplete, setIsProcessingComplete] = useState<boolean>(false);
-  const [startTime, setStartTime] = useState<number>(0);
-  const [totalDuration, setTotalDuration] = useState<number>(0);
-  const [isFFmpegInitializing, setIsFFmpegInitializing] = useState<boolean>(false);
-  const [hasFFmpegStarted, setHasFFmpegStarted] = useState<boolean>(false);
-  const [apiStatus, setApiStatus] = useState<ApiStatus>({ isHealthy: false, message: '', details: '' });
-  const [apiOptions, setApiOptions] = useState<ApiOptions>({ models: [], responseFormats: [], timestampGranularities: [], languages: [] });
-  const [selectedModel, setSelectedModel] = useState<string>(localStorage.getItem('selectedModel') || '');
-  const [selectedLanguage, setSelectedLanguage] = useState<string>(localStorage.getItem('selectedLanguage') || 'auto');
-  const [selectedTimestampGranularity, setSelectedTimestampGranularity] = useState<string>(localStorage.getItem('selectedTimestampGranularity') || 'segment');
-  const [vadFilter, setVadFilter] = useState<boolean>(true);
-  const [useTemperature, setUseTemperature] = useState<boolean>(false);
-  const [temperature, setTemperature] = useState<number>(0.7);
-  const [prompt, setPrompt] = useState<string>('');
-  const [hotwords, setHotwords] = useState<string>('');
-  const [hotwordInput, setHotwordInput] = useState<string>('');
-  const [hotwordTags, setHotwordTags] = useState<string[]>([]);
-  const [apiUrl, setApiUrl] = useState<string>(() => {
-    const storedUrl = localStorage.getItem('apiUrl');
-    return storedUrl || import.meta.env.VITE_WHISPER_API_URL || 'http://localhost:9000';
-  });
-  const [apiToken, setApiToken] = useState<string>(() => {
-    const storedToken = localStorage.getItem('apiToken');
-    return storedToken || import.meta.env.VITE_WHISPER_API_TOKEN || '';
-  });
-  const [useAuth, setUseAuth] = useState<boolean>(() => {
-    const storedUseAuth = localStorage.getItem('useAuth');
-    return storedUseAuth === 'true' || !!import.meta.env.VITE_WHISPER_API_TOKEN;
-  });
-  const [healthCheckUrl, setHealthCheckUrl] = useState<string>(() => {
-    const storedUrl = localStorage.getItem('healthCheckUrl');
-    return storedUrl || import.meta.env.VITE_HEALTH_CHECK_URL || '';
-  });
-  const [useHealthCheck, setUseHealthCheck] = useState<boolean>(() => {
-    const storedUseHealthCheck = localStorage.getItem('useHealthCheck');
-    return storedUseHealthCheck === 'true' || !!import.meta.env.VITE_HEALTH_CHECK_URL;
-  });
-  const [isServerSettingsOpen, setIsServerSettingsOpen] = useState<boolean>(false);
-  const [tempApiUrl, setTempApiUrl] = useState<string>(apiUrl);
-  const [tempApiToken, setTempApiToken] = useState<string>(apiToken);
-  const [tempUseAuth, setTempUseAuth] = useState<boolean>(useAuth);
-  const [tempHealthCheckUrl, setTempHealthCheckUrl] = useState<string>(healthCheckUrl);
-  const [tempUseHealthCheck, setTempUseHealthCheck] = useState<boolean>(useHealthCheck);
-  const [ffmpeg] = useState(() => new FFmpeg());
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  });
-  const [originalFileName, setOriginalFileName] = useState<string>('');
-  const [currentStep, setCurrentStep] = useState<string>('');
-  const [stepProgress, setStepProgress] = useState<number>(0);
-  const [currentChunk, setCurrentChunk] = useState<number>(0);
-  const [totalChunks, setTotalChunks] = useState<number>(0);
-  const [lastEndTime, setLastEndTime] = useState<number>(0);
-  const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
-  const [transcriptionStartTime, setTranscriptionStartTime] = useState<number>(0);
-  const [lastProcessingTime, setLastProcessingTime] = useState<number>(0);
-  const [hasEnteredTranscriptionMode, setHasEnteredTranscriptionMode] = useState<boolean>(false);
-  const [useServerProxy, setUseServerProxy] = useState<boolean>(() => {
-    return import.meta.env.VITE_USE_SERVER_PROXY === 'true';
+  const { t, i18n } = useTranslation();
+  const { theme, themeMode, handleThemeChange } = useTheme();
+  const {
+    transcription,
+    logs,
+    processingTime,
+    originalFileName,
+    processingState,
+    processFile,
+    handleCopy,
+    clearLogs,
+    resetProgress
+  } = useTranscription(t);
+
+  // 設定を読み込み - 使用可能な値とエラーを取得
+  const { config, loading, error, forceProxyDisabled } = useConfig();
+
+  // 状態管理ストアの初期化（再レンダリングなし）
+  useCreateAppState();
+  useCreateThemeState();
+  useCreateTranscriptionState();
+  useCreateConfigState();
+  useCreateApiOptionsState();
+
+  // 状態更新用のディスパッチャー（再レンダリングなし）
+  const updateApiStatus = useApiStatusUpdater();
+  const updateApiOptions = useApiOptionsUpdater();
+  const updateSelectedModel = useSelectedModelUpdater();
+  const updateFFmpegPreInitStatus = useFFmpegPreInitStatusUpdater();
+  const setApiOptionsLoading = useApiOptionsLoadingUpdater();
+
+  // 必要な状態のみを購読（該当する状態が変更された時のみ再レンダリング）
+  const serverConfig = useServerConfig();
+  const selectedModel = useSelectedModel();
+  const apiOptions = useApiOptions();
+  const apiConfig = useApiConfig();
+  
+  // アプリ設定を取得
+  const temperatureSettings = useTemperatureSettings();
+  const vadFilter = useVadFilter();
+  const prompt = usePrompt();
+  const hotwords = useHotwords();
+  
+  // TranscriptionOptionsを動的に生成
+  const transcriptionOptions = useTranscriptionOptionsFromApiState({
+    useTemperature: temperatureSettings.useTemperature,
+    temperature: temperatureSettings.temperature,
+    useVadFilter: vadFilter,
+    prompt,
+    hotwords
   });
 
-  // 処理時間の更新用のエフェクト
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (isProcessing && !isProcessingComplete) {
-      const startTimeValue = startTime;
-      timer = setInterval(() => {
-        const currentTime = Date.now();
-        const elapsedTime = (currentTime - startTimeValue) / 1000;
-        setProcessingTime(elapsedTime);
-        setLastProcessingTime(elapsedTime);
-      }, 100);
+  // プロキシURLの取得
+  const getProxyUrl = useCallback(() => {
+    // プロキシが強制無効の場合や設定がオフの場合はapiUrlを使用
+    if (forceProxyDisabled || !serverConfig.useServerProxy) {
+      return serverConfig.apiUrl;
     }
-    return () => {
-      if (timer) {
-        clearInterval(timer);
+    return '/whisper'; // プロキシパス
+  }, [serverConfig, forceProxyDisabled]);
+
+  // APIオプションとステータスの取得（サーバー設定変更時のみ）
+  const fetchApiData = useCallback(async () => {
+    try {
+      // ローディング開始
+      setApiOptionsLoading(true);
+      
+      // 設定から適切なURLを取得
+      const proxyUrl = getProxyUrl();
+      const useProxyMode = !forceProxyDisabled && serverConfig.useServerProxy;
+      const url = getApiEndpoint(proxyUrl, API_ENDPOINTS.OPTIONS, useProxyMode);
+      
+      // 認証有無に基づいてAPIオプションを取得
+      const options = await fetchApiOptions(url, serverConfig.useAuth ? serverConfig.apiToken : undefined);
+      
+      // APIオプション更新（ローカルストレージとの照合も含む）
+      updateApiOptions(options);
+      
+      // ヘルスチェック実行
+      const healthStatus = await checkApiHealth(proxyUrl, serverConfig.useAuth ? serverConfig.apiToken : undefined);
+      updateApiStatus(healthStatus);
+
+      // ヘルスチェックが成功し、モデルが未選択の場合は最初のモデルを選択
+      if (healthStatus.status === 'healthy' && !selectedModel && options.models.length > 0) {
+        const firstModel = options.models[0];
+        updateSelectedModel(firstModel.id);
       }
-    };
-  }, [isProcessing, isProcessingComplete, startTime, lastProcessingTime]);
-
-  // APIのエンドポイントを取得する関数
-  const getApiEndpoint = (endpoint: string) => {
-    if (useServerProxy) {
-      // プロキシモードの場合、/whisperをプレフィックスとして使用
-      return `/whisper${endpoint}`;
+    } catch (error) {
+      // エラー発生時はAPI状態を「エラー」に設定
+      updateApiStatus({
+        status: 'error',
+        message: 'Connection to API server failed',
+        details: error instanceof Error ? error.stack || error.message : String(error)
+      });
+      // 空のAPIオプションを設定
+      updateApiOptions({ models: [], responseFormats: [], timestampGranularities: [], languages: [] });
+    } finally {
+      // ローディング終了
+      setApiOptionsLoading(false);
     }
-    // 直接アクセスの場合、API URLとエンドポイントを結合
-    return `${apiUrl}${endpoint}`;
-  };
+  }, [serverConfig, getProxyUrl, updateApiStatus, updateApiOptions, updateSelectedModel, selectedModel, forceProxyDisabled, setApiOptionsLoading]);
 
-  // ヘルスチェック用のURLを取得する関数
-  const getHealthCheckUrl = () => {
-    if (useServerProxy) {
-      return import.meta.env.VITE_WHISPER_HEALTH_CHECK_URL || '/whisper/health';
-    }
-    return healthCheckUrl || apiUrl;
-  };
+  const handleLanguageChange = useCallback((language: string) => {
+    i18n.changeLanguage(language);
+  }, [i18n]);
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    if (acceptedFiles.length === 0) return;
-
-    // モデルが選択されていない場合はエラー
+  const handleFileSelect = useCallback(async (file: File) => {
+    // モデルが選択されていない場合は処理しない
     if (!selectedModel) {
-      setLogs(prev => [...prev, {
-        type: 'error',
-        message: t('errors.modelNotSelected')
-      }]);
       return;
     }
 
-    // 前回の処理の完了・エラー状態をリセット
-    setCurrentStep('');
-    setIsProcessingComplete(false);
-    setStatus('');
+    // 新しいファイル処理開始前に進捗をリセット
+    resetProgress();
+    
+    // ファイル処理開始
+    await processFile(file, transcriptionOptions, apiConfig);
+  }, [selectedModel, resetProgress, processFile, transcriptionOptions, apiConfig]);
 
-    const file = acceptedFiles[0];
-    setOriginalFileName(file.name.replace(/\.[^/.]+$/, '')); // 拡張子を除いたファイル名
-    setIsProcessing(true);
-    setProgress(0);
-    setStepProgress(0);
-    setLogs([]);
-    setTranscription([]);
-    setProcessingTime(0);
-    setLastProcessingTime(0);
-    const now = Date.now();
-    setStartTime(now);
-    setCurrentChunk(0);
-    setTotalChunks(0);
-    setLastEndTime(0);
-    setIsTranscribing(false);
-    setTranscriptionStartTime(0);
-    setTotalDuration(0);
-    setHasEnteredTranscriptionMode(false);
-    setIsFFmpegInitializing(true);
-    setHasFFmpegStarted(false);
-    let ffmpegStartTime = 0;
-    let ffmpegEndTime = 0;
+  // 初回マウント時とサーバー設定変更時のみAPIデータを取得
+  useEffect(() => {
+    fetchApiData();
+  }, [fetchApiData]);
 
-    // デバッグ情報をログに追加
-    setLogs(prev => [...prev, {
-      type: 'info',
-      message: t('logs.processingStart', {
-        startTime: new Date(now).toISOString(),
-        fileName: file.name,
-        fileSize: file.size
-      })
-    }]);
-
-    try {
-      await ffmpeg.load();
-      ffmpegStartTime = Date.now();
-      setStartTime(ffmpegStartTime); // 処理開始時間をFFmpegの処理開始時間に更新
-
-      setCurrentStep('converting');
-      setStatus('converting');
-      let hasStartedProgress = false;
-      let durationFound = false;
-      const wavData = await convertToWav(file, ffmpeg, (progress) => {
-        // FFmpegの進捗が始まるまでは進捗を0のままにする
-        if (progress > 0) {
-          if (!hasFFmpegStarted) {
-            setIsFFmpegInitializing(false);
-            setHasFFmpegStarted(true);
-          }
-          hasStartedProgress = true;
-          setStepProgress(progress);
-          setStatus(t('processing.converting') + ` (${progress.toFixed(1)}%)`);
-        }
-      }, (log) => {
-        // FFmpegのログのみを表示（重複を防ぐため、同じメッセージが連続しないようにする）
-        if (log.type === 'info') {
-          setLogs(prev => {
-            const lastLog = prev[prev.length - 1];
-            if (lastLog && lastLog.message === log.message) {
-              return prev;
-            }
-            return [...prev, log];
-          });
-        }
-        // FFmpegのログから総再生時間を取得
-        if (log.message.includes('Duration:')) {
-          // より柔軟な正規表現パターン
-          const durationMatch = log.message.match(/Duration:\s*(\d+):(\d+):(\d+)(?:\.(\d+))?/);
-          if (durationMatch) {
-            const [, hours, minutes, seconds, centiseconds] = durationMatch.map(Number);
-            // 時間を秒に変換（centisecondsがない場合は0として扱う）
-            const newDuration = (hours * 3600) + (minutes * 60) + seconds + ((centiseconds || 0) / 100);
-            // 総再生時間を即座に更新
-            window.lastCalculatedDuration = newDuration;
-            setTotalDuration(window.lastCalculatedDuration);
-            durationFound = true;
-            // デバッグ情報をログに追加（重複を防ぐため、同じメッセージが連続しないようにする）
-            setLogs(prev => {
-              const lastLog = prev[prev.length - 1];
-              if (lastLog && lastLog.message === t('logs.durationFound', { duration: newDuration.toFixed(2) })) {
-                return prev;
-              }
-              return [...prev, {
-                type: 'debug',
-                message: t('logs.durationFound', { duration: newDuration.toFixed(2) })
-              }];
-            });
-          }
-        }
-      });
-      ffmpegEndTime = Date.now();
-
-      // 総再生時間が取得できていない場合はエラー
-      if (!durationFound) {
-        setLogs(prev => [...prev, {
-          type: 'error',
-          message: t('logs.errors.durationNotFound')
-        }]);
-        throw new Error(t('logs.errors.durationNotFound'));
-      }
-
-      setCurrentStep('splitting');
-      setStepProgress(0);
-      setStatus('splitting');
-      const chunks = splitIntoChunks(wavData);
-      setTotalChunks(chunks.length);
-      setStepProgress(100);
-
-      setCurrentStep('uploading');
-      setStepProgress(0);
-      setStatus('uploading');
-
-      for (const chunk of chunks) {
-        const formData = new FormData();
-        formData.append('file', new Blob([chunk], { type: 'audio/wav' }));
-        formData.append('model', selectedModel);
-        formData.append('language', selectedLanguage);
-        formData.append('timestamp_granularities', selectedTimestampGranularity);
-        formData.append('vad_filter', vadFilter.toString());
-        formData.append('response_format', 'vtt');
-        formData.append('stream', 'true');
-        if (prompt) formData.append('prompt', prompt);
-        if (hotwords) formData.append('hotwords', hotwords);
-        if (useTemperature) formData.append('temperature', temperature.toString());
-
-        const response = await fetch(`${getApiEndpoint(API_ENDPOINTS.TRANSCRIBE)}`, {
-          method: 'POST',
-          headers: {
-            'Accept': 'application/json',
-            ...(apiToken && { 'Authorization': `Bearer ${apiToken}` })
-          },
-          body: formData
+  // FFmpegの事前初期化（ページ読み込み時に実行）
+  useEffect(() => {
+    const initializeFFmpeg = async () => {
+      const status = getFFmpegInitializationStatus();
+      
+      // 既に初期化済みまたは初期化中の場合はスキップ
+      if (status.isInitialized || status.isInitializing) {
+        updateFFmpegPreInitStatus({
+          isInitializing: status.isInitializing,
+          isInitialized: status.isInitialized,
+          initError: null
         });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => null);
-          throw new Error(errorData?.detail || t('errors.httpError', { status: response.status }));
-        }
-
-        const reader = response.body?.getReader();
-        if (!reader) {
-          throw new Error(t('errors.responseNotReadable'));
-        }
-
-        let result = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          
-          const text = new TextDecoder().decode(value);
-          result += text;
-
-          // リアルタイムで結果を表示
-          if (text.includes('-->')) {
-            const segments = parseResponse(result);
-            if (segments.length > 0) {
-              // 最初のセグメントが到着したら文字起こしモードに切り替え
-              if (!isTranscribing && !hasEnteredTranscriptionMode && segments.length > 0) {
-                // 総再生時間を設定（window.lastCalculatedDurationを優先）
-                const duration = window.lastCalculatedDuration || segments[0].end * 10;
-                setTotalDuration(duration);
-
-                // 文字起こしモードに切り替え
-                setIsTranscribing(true);
-                setHasEnteredTranscriptionMode(true);
-                setCurrentStep('transcribing');
-                setStepProgress(0);
-                setStatus('transcribing');
-                setTranscriptionStartTime(Date.now());
-              }
-
-              // 最後のセグメントの終了時間を取得
-              const lastSegment = segments[segments.length - 1];
-
-              // lastEndTimeの更新を先に行う（異常値を防ぐ）
-              if (lastSegment.end > lastEndTime) {
-                // 前回の終了時間を更新
-                const newLastEndTime = lastSegment.end;
-                setLastEndTime(newLastEndTime);
-                
-                // 進捗を計算（最後のセグメントの終了時間 / window.lastCalculatedDuration）
-                const transcriptionProgress = Math.min(100, (newLastEndTime / (window.lastCalculatedDuration || totalDuration)) * 100);
-                setStepProgress(transcriptionProgress);
-
-                // 進捗が0より大きい場合のみ表示
-                if (transcriptionProgress > 0) {
-                  setStatus(t('processing.transcribing') + ` (${transcriptionProgress.toFixed(1)}%)`);
-                }
-              }
-
-              // 文字起こしが完了したかチェック（最後のセグメントの終了時間が総再生時間の95%以上の場合）
-              if (lastSegment.end >= (window.lastCalculatedDuration || totalDuration) * 0.95) {
-                setStepProgress(100);
-                setStatus(t('processing.transcribing') + ' (100.0%)');
-              }
-
-              setTranscription(prev => {
-                const newSegments = segments.filter(seg => 
-                  !prev.some(p => p.start === seg.start && p.end === seg.end)
-                );
-                return [...prev, ...newSegments];
-              });
-            }
-          }
-        }
-
-        setCurrentChunk(prev => prev + 1);
-        // 文字起こしが始まっていない場合のみアップロード進捗を表示
-        if (!isTranscribing) {
-          const uploadProgress = (currentChunk / totalChunks) * 100;
-          setStepProgress(uploadProgress);
-          if (uploadProgress > 0) {
-            setStatus(t('processing.uploading') + ` (${uploadProgress.toFixed(1)}%)`);
-          }
-        }
-      }
-
-      const endTime = Date.now();
-      const ffmpegProcessingTime = (ffmpegEndTime - ffmpegStartTime) / 1000; // FFmpegの処理時間（秒）
-      const totalProcessingTime = (endTime - ffmpegStartTime) / 1000; // 全体の処理時間（秒）
-      setProcessingTime(totalProcessingTime);
-      setLastProcessingTime(totalProcessingTime);
-      setIsProcessingComplete(true);
-      setCurrentStep('complete');
-      setStepProgress(100);
-      setStatus('complete');
-      // 最終的なデバッグ情報をログに追加
-      setLogs(prev => [...prev, {
-        type: 'info',
-        message: t('logs.processingComplete', {
-          processingTime: totalProcessingTime.toFixed(1),
-          startTime: new Date(ffmpegStartTime).toISOString(),
-          endTime: new Date(endTime).toISOString(),
-          totalDuration: (window.lastCalculatedDuration || 0).toFixed(1)
-        })
-      }]);
-    } catch (error: unknown) {
-      setStatus('error');
-      if (error instanceof Error) {
-        const errorMessage = error.message;
-        // エラーメッセージが翻訳キーの場合は、そのまま表示
-        if (typeof errorMessage === 'string' && errorMessage.startsWith('errors.')) {
-          setLogs(prev => [...prev, { type: 'error', message: t(errorMessage) }]);
-        } else {
-          // それ以外のエラーメッセージは、そのまま表示
-          setLogs(prev => [...prev, { type: 'error', message: errorMessage }]);
-        }
-      } else {
-        setLogs(prev => [...prev, { type: 'error', message: t('errors.unknown') }]);
-      }
-      setCurrentStep('error');
-      setIsProcessingComplete(true);
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [ffmpeg, selectedModel, selectedLanguage, selectedTimestampGranularity, vadFilter, prompt, hotwords, useTemperature, temperature, apiUrl, apiToken, t, logs, currentChunk, totalChunks, lastEndTime, isTranscribing, transcriptionStartTime, lastProcessingTime]);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
-
-  const theme = createTheme({
-    palette: {
-      mode: isDarkMode ? 'dark' : 'light',
-    },
-  });
-
-  // システムのダークモード設定の変更を監視
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = (e: MediaQueryListEvent) => setIsDarkMode(e.matches);
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, []);
-
-  // 定期的なヘルスチェック
-  useEffect(() => {
-    const checkHealth = async () => {
-      if (!useHealthCheck) {
-        setApiStatus({ isHealthy: true, message: '', details: '' });
         return;
       }
-      const url = getHealthCheckUrl();
-      const status = await checkApiHealth(url, useAuth ? apiToken : undefined);
-      setApiStatus(status);
+
+      updateFFmpegPreInitStatus({
+        isInitializing: true,
+        isInitialized: false,
+        initError: null
+      });
+
+      try {
+        await preInitializeFFmpeg(
+          undefined, // onLog - ここではログを出力しない
+          (message) => {
+            // プログレスメッセージはコンソールに出力
+            console.info(`[FFmpeg Pre-init] ${message}`);
+          }
+        );
+        
+        updateFFmpegPreInitStatus({
+          isInitializing: false,
+          isInitialized: true,
+          initError: null
+        });
+      } catch (error) {
+        console.warn('FFmpeg pre-initialization failed:', error);
+        updateFFmpegPreInitStatus({
+          isInitializing: false,
+          isInitialized: false,
+          initError: error instanceof Error ? error.message : String(error)
+        });
+      }
     };
-    checkHealth();
-    const interval = setInterval(checkHealth, 5000);
-    return () => clearInterval(interval);
-  }, [apiUrl, apiToken, useAuth, healthCheckUrl, useHealthCheck, useServerProxy]);
 
-  // APIオプションの初期取得（初回のみ）
-  useEffect(() => {
-    if (apiOptions.models.length === 0) {
-      const url = getApiEndpoint(API_ENDPOINTS.OPTIONS);
-      fetchApiOptions(url, apiToken).then(setApiOptions);
-    }
-  }, [apiUrl, apiToken, apiOptions.models.length, useServerProxy]);
+    // ページ読み込み後に少し遅延してから初期化を開始
+    // （他の重要な初期化処理を妨げないため）
+    const timer = setTimeout(initializeFFmpeg, 500);
+    
+    return () => clearTimeout(timer);
+  }, [updateFFmpegPreInitStatus]); // 初回マウント時のみ実行
+  
+  // ロード中表示
+  if (loading) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Container maxWidth="lg" sx={{ py: 4 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+            <Typography variant="h6">設定をロード中...</Typography>
+          </Box>
+        </Container>
+      </ThemeProvider>
+    );
+  }
 
-  const handleModelChange = (event: SelectChangeEvent) => {
-    const value = event.target.value;
-    setSelectedModel(value);
-    localStorage.setItem('selectedModel', value);
-  };
-
-  const handleTimestampGranularityChange = (event: SelectChangeEvent) => {
-    const value = event.target.value;
-    setSelectedTimestampGranularity(value);
-    localStorage.setItem('selectedTimestampGranularity', value);
-  };
-
-  const handleVadFilterChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setVadFilter(event.target.checked);
-  };
-
-  const handlePromptChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setPrompt(event.target.value);
-  };
-
-  const handleHotwordInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value;
-    setHotwordInput(value);
-
-    // カンマが入力された場合、タグを追加
-    if (value.includes(',')) {
-      const tags = value.split(',')
-        .map(tag => tag.trim())
-        .filter(tag => tag && !hotwordTags.includes(tag));
-      
-      if (tags.length > 0) {
-        const newTags = [...hotwordTags, ...tags];
-        setHotwordTags(newTags);
-        setHotwords(newTags.join(','));
-      }
-      setHotwordInput('');
-    }
-  };
-
-  const handleHotwordInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter' && hotwordInput.trim()) {
-      event.preventDefault();
-      const newTag = hotwordInput.trim();
-      if (!hotwordTags.includes(newTag)) {
-        const newTags = [...hotwordTags, newTag];
-        setHotwordTags(newTags);
-        setHotwords(newTags.join(','));
-      }
-      setHotwordInput('');
-    }
-  };
-
-  const handleDeleteHotword = (tagToDelete: string) => {
-    const newTags = hotwordTags.filter(tag => tag !== tagToDelete);
-    setHotwordTags(newTags);
-    setHotwords(newTags.join(','));
-  };
-
-  const handleTempApiUrlChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setTempApiUrl(event.target.value);
-  };
-
-  const handleTempApiTokenChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setTempApiToken(event.target.value);
-  };
-
-  const handleTempUseAuthChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setTempUseAuth(event.target.checked);
-  };
-
-  const handleTempHealthCheckUrlChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setTempHealthCheckUrl(event.target.value);
-  };
-
-  const handleTempUseHealthCheckChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setTempUseHealthCheck(event.target.checked);
-  };
-
-  const handleApplySettings = () => {
-    // API設定を保存
-    localStorage.setItem('apiUrl', tempApiUrl);
-    localStorage.setItem('apiToken', tempApiToken);
-    localStorage.setItem('useAuth', tempUseAuth.toString());
-    localStorage.setItem('useHealthCheck', tempUseHealthCheck.toString());
-    localStorage.setItem('healthCheckUrl', tempHealthCheckUrl);
-
-    // 設定を反映
-    setApiUrl(tempApiUrl);
-    setApiToken(tempApiToken);
-    setUseAuth(tempUseAuth);
-    setUseHealthCheck(tempUseHealthCheck);
-    setHealthCheckUrl(tempHealthCheckUrl);
-  };
-
-  const handleToggleProxy = () => {
-    setUseServerProxy(!useServerProxy);
-  };
+  // 設定エラーがある場合の表示
+  if (error.hasError) {
+    return <ConfigErrorDisplay error={error} config={config} />;
+  }
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Container maxWidth={false} sx={{ py: 4 }}>
-        <Container maxWidth="md" sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h4" component="h1" gutterBottom>
-            {t('appTitle')}
+      <AppBar position="static" color="default" elevation={1}>
+        <Toolbar>
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+            {config.appTitle}
           </Typography>
-          <FormControl sx={{ minWidth: 120 }}>
-            <Select
-              value={language}
-              onChange={(e) => setLanguage(e.target.value as 'ja' | 'en')}
-              size="small"
-            >
-              <MenuItem value="ja">日本語</MenuItem>
-              <MenuItem value="en">English</MenuItem>
-            </Select>
-          </FormControl>
-        </Container>
-
-        <Container maxWidth="md" sx={{ mb: 4 }}>
-          <Paper sx={{ p: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-              <Button
-                onClick={() => setIsServerSettingsOpen(!isServerSettingsOpen)}
-                startIcon={isServerSettingsOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-              >
-                {t('serverSettings.title')}
-              </Button>
-              {import.meta.env.VITE_USE_SERVER_PROXY === 'true' && (
-                <Button
-                  onClick={handleToggleProxy}
-                  variant="outlined"
-                  size="small"
-                  sx={{ ml: 2 }}
-                >
-                  {useServerProxy ? t('serverSettings.useCustomServer') : t('serverSettings.useServerProxy')}
-                </Button>
-              )}
-            </Box>
-            <Collapse in={isServerSettingsOpen}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
-                {!useServerProxy && (
-                  <>
-                    <TextField
-                      label={t('apiUrl.label')}
-                      value={tempApiUrl}
-                      onChange={handleTempApiUrlChange}
-                      placeholder={t('apiUrl.placeholder')}
-                      fullWidth
-                    />
-                    <Box sx={{ pl: 2 }}>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={tempUseAuth}
-                            onChange={handleTempUseAuthChange}
-                          />
-                        }
-                        label={t('serverSettings.useAuth')}
-                      />
-                    </Box>
-                    {tempUseAuth && (
-                      <TextField
-                        label={t('apiToken.label')}
-                        value={tempApiToken}
-                        onChange={handleTempApiTokenChange}
-                        placeholder={t('apiToken.placeholder')}
-                        type="password"
-                        fullWidth
-                      />
-                    )}
-                  </>
-                )}
-                <Box sx={{ pl: 2 }}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={tempUseHealthCheck}
-                        onChange={handleTempUseHealthCheckChange}
-                      />
-                    }
-                    label={t('serverSettings.useHealthCheck')}
-                  />
-                </Box>
-                {tempUseHealthCheck && (
-                  <TextField
-                    label={t('serverSettings.healthCheckUrl.label')}
-                    value={tempHealthCheckUrl}
-                    onChange={handleTempHealthCheckUrlChange}
-                    placeholder={t('serverSettings.healthCheckUrl.placeholder')}
-                    fullWidth
-                  />
-                )}
-                <Button
-                  variant="contained"
-                  onClick={handleApplySettings}
-                  sx={{ alignSelf: 'flex-end', mt: 1 }}
-                >
-                  {t('common.apply')}
-                </Button>
-              </Box>
-            </Collapse>
-          </Paper>
-        </Container>
-
-        {useHealthCheck && (
-          <Container maxWidth="md" sx={{ mb: 4 }}>
-            <Typography variant="h6" gutterBottom>
-              {t('apiStatus.healthy')}
-            </Typography>
-            <Alert 
-              severity={apiStatus.isHealthy ? "success" : "error"}
-              sx={{ mb: 2 }}
-            >
-              {apiStatus.isHealthy ? t('apiStatus.message.success') : t('apiStatus.message.error')}
-              {apiStatus.details && (
-                <Typography variant="body2" sx={{ mt: 1 }}>
-                  {t('apiStatus.details')}: {apiStatus.details}
-                </Typography>
-              )}
-            </Alert>
-          </Container>
-        )}
-
-        <Container maxWidth="md" sx={{ mb: 4 }}>
-          <Box sx={{ 
-            display: 'flex',
-            flexDirection: { xs: 'column', md: 'row' },
-            gap: 2,
-            '& > *': {
-              flex: { xs: '1 1 100%', md: '1 1 0' }
-            }
-          }}>
-            <FormControl fullWidth>
-              <InputLabel>{t('model.label')}</InputLabel>
-              <Select
-                value={selectedModel}
-                onChange={handleModelChange}
-                label={t('model.label')}
-                required
-                error={!selectedModel}
-              >
-                {apiOptions?.models.map((model) => (
-                  <MenuItem key={model.id} value={model.id}>
-                    {model.id}
-                  </MenuItem>
-                ))}
-              </Select>
-              {!selectedModel && (
-                <Typography variant="caption" color="error" sx={{ mt: 0.5 }}>
-                  {t('model.required')}
-                </Typography>
-              )}
-            </FormControl>
-
-            <FormControl fullWidth>
-              <InputLabel id="language-select-label">{t('language.label')}</InputLabel>
-              <Select
-                labelId="language-select-label"
-                value={selectedLanguage}
-                label={t('language.label')}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setSelectedLanguage(value);
-                  localStorage.setItem('selectedLanguage', value);
-                }}
-              >
-                <MenuItem value="auto">{t('language.auto')}</MenuItem>
-                {apiOptions.languages.map((lang) => (
-                  <MenuItem key={lang} value={lang}>
-                    {LANGUAGE_NAMES[language][lang] || lang}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <FormControl fullWidth>
-              <InputLabel>{t('timestampGranularity.label')}</InputLabel>
-              <Select
-                value={selectedTimestampGranularity}
-                onChange={handleTimestampGranularityChange}
-                label={t('timestampGranularity.label')}
-              >
-                <MenuItem value="word">{t('timestampGranularity.word')}</MenuItem>
-                <MenuItem value="segment">{t('timestampGranularity.segment')}</MenuItem>
-              </Select>
-            </FormControl>
-          </Box>
-
-          <Box sx={{ 
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 2
-          }}>
-            <FormControl fullWidth>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={vadFilter}
-                    onChange={handleVadFilterChange}
-                  />
-                }
-                label={t('vadFilter.label')}
-              />
-            </FormControl>
-
-            <FormControl fullWidth>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={useTemperature}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUseTemperature(e.target.checked)}
-                  />
-                }
-                label={t('temperature.label')}
-              />
-              {useTemperature && (
-                <Slider
-                  value={temperature}
-                  onChange={(_: Event, value: number | number[]) => setTemperature(value as number)}
-                  min={0}
-                  max={2}
-                  step={0.1}
-                  marks={[
-                    { value: 0, label: '0' },
-                    { value: 1, label: '1' },
-                    { value: 2, label: '2' }
-                  ]}
-                  valueLabelDisplay="auto"
-                  valueLabelFormat={(value: number) => value.toFixed(1)}
-                  aria-label="温度"
-                />
-              )}
-            </FormControl>
-          </Box>
-
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <TextField
-              fullWidth
-              label={t('prompt.label')}
-              value={prompt}
-              onChange={handlePromptChange}
-              placeholder={t('prompt.placeholder')}
+          <Stack direction="row" spacing={2}>
+            <ThemeSelector
+              currentTheme={themeMode}
+              onThemeChange={handleThemeChange}
             />
+            <LanguageSelector
+              currentLanguage={i18n.language}
+              onLanguageChange={handleLanguageChange}
+            />
+          </Stack>
+        </Toolbar>
+      </AppBar>
 
-            <Box>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                {t('hotwords.label')}
-              </Typography>
-              <Box sx={{ mb: 1 }}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  value={hotwordInput}
-                  onChange={handleHotwordInputChange}
-                  onKeyDown={handleHotwordInputKeyDown}
-                  placeholder={t('hotwords.placeholder')}
-                />
-              </Box>
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                {hotwordTags.map((tag) => (
-                  <Chip
-                    key={tag}
-                    label={tag}
-                    onDelete={() => handleDeleteHotword(tag)}
-                    sx={{ m: 0.5 }}
-                  />
-                ))}
-              </Stack>
-            </Box>
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="subtitle1" color="text.secondary" gutterBottom>
+            {t('appDescription')}
+          </Typography>
+        </Box>
+
+        <Box sx={{ mb: 4 }}>
+          <ServerSettings />
+        </Box>
+
+        <Box sx={{ mb: 4 }}>
+          <TranscriptionSettings />
+        </Box>
+
+        <Box sx={{ mb: 4 }}>
+          <FileUpload onFileSelect={handleFileSelect} />
+        </Box>
+
+        {(processingState.isProcessing || processingState.currentStep || processingState.status || processingTime) && (
+          <Box sx={{ mb: 4 }}>
+            <ProcessingStatus
+              isProcessing={processingState.isProcessing}
+              progress={processingState.progress}
+              status={processingState.status}
+              currentStep={processingState.currentStep}
+              stepProgress={processingState.stepProgress}
+              currentChunk={processingState.currentChunk}
+              totalChunks={processingState.totalChunks}
+              processingTime={processingTime}
+              isFFmpegInitializing={processingState.isFFmpegInitializing}
+            />
           </Box>
-        </Container>
+        )}
 
-        <Container maxWidth="md" sx={{ mb: 4 }}>
-          <Box
-            {...getRootProps()}
-            sx={{
-              border: '2px dashed',
-              borderColor: isDragActive ? 'primary.main' : 'grey.300',
-              borderRadius: 1,
-              p: 3,
-              textAlign: 'center',
-              cursor: 'pointer',
-              bgcolor: isDragActive ? 'action.hover' : 'background.paper',
-            }}
-          >
-            <input {...getInputProps()} />
-            <Typography>
-              {isDragActive ? t('upload.dragActive') : t('upload.default')}
-            </Typography>
+        {(transcription.length > 0 || (processingState.isProcessing && originalFileName)) && (
+          <Box sx={{ mb: 4 }}>
+            <TranscriptionResult
+              segments={transcription}
+              onCopy={handleCopy}
+              originalFileName={originalFileName}
+            />
           </Box>
-        </Container>
-
-        {isProcessing && (
-          <Container maxWidth="md" sx={{ mb: 4 }}>
-            {currentStep === 'uploading' ? (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <CircularProgress size={24} />
-                <Typography variant="body2" color="text.secondary">
-                  {t('processing.uploading')}
-                </Typography>
-              </Box>
-            ) : (
-              <>
-                {currentStep && (
-                  <LinearProgress 
-                    variant="determinate" 
-                    value={stepProgress} 
-                    color={currentStep === 'error' ? 'error' : 'primary'}
-                  />
-                )}
-                <Typography 
-                  variant="body2" 
-                  color="text.secondary" 
-                  sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1 }}
-                >
-                  {isFFmpegInitializing && (
-                    <>
-                      <CircularProgress size={16} />
-                      {t('processing.initializingFFmpeg')}
-                    </>
-                  )}
-                  {!isFFmpegInitializing && currentStep === 'converting' && t('processing.converting') + ` (${stepProgress.toFixed(1)}%)`}
-                  {currentStep === 'splitting' && t('processing.splitting')}
-                  {currentStep === 'transcribing' && t('processing.transcribing') + ` (${stepProgress.toFixed(1)}%)`}
-                  {currentStep === 'complete' && (
-                    <>
-                      <CheckCircleIcon color="success" />
-                      {t('processing.complete')}
-                    </>
-                  )}
-                  {currentStep === 'error' && (
-                    <>
-                      <ErrorIcon color="error" />
-                      {t('processing.error')}
-                    </>
-                  )}
-                </Typography>
-              </>
-            )}
-          </Container>
         )}
 
-        {isProcessingComplete && !isProcessing && currentStep && (
-          <Container maxWidth="md" sx={{ mb: 4 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              {currentStep === 'error' ? (
-                <>
-                  <ErrorIcon color="error" />
-                  <Typography variant="body2" color="text.secondary">
-                    {t('processing.error')}
-                  </Typography>
-                </>
-              ) : (
-                <>
-                  <CheckCircleIcon color="success" />
-                  <Typography variant="body2" color="text.secondary">
-                    {t('processing.complete')}
-                  </Typography>
-                </>
-              )}
-            </Box>
-          </Container>
-        )}
-
-        {logs.length > 0 && (
-          <Container maxWidth="md" sx={{ mb: 4 }}>
-            <Typography variant="h6" gutterBottom>
-              {t('logs.title')}
-            </Typography>
-            <Paper sx={{ p: 2, maxHeight: 200, overflow: 'auto' }}>
-              {logs.map((log, index) => (
-                <Typography 
-                  key={index} 
-                  variant="body2" 
-                  component="pre" 
-                  sx={{ 
-                    whiteSpace: 'pre-wrap',       /* CSS3 */
-                    wordWrap: 'break-word',       /* Internet Explorer 5.5+ */
-                    wordBreak: 'break-all',
-                    fontFamily: 'monospace'
-                  }}
-                >
-                  {log.message}
-                </Typography>
-              ))}
-            </Paper>
-          </Container>
-        )}
-
-        {transcription.length > 0 && (
-          <Container maxWidth="md">
-            <Typography variant="h6" gutterBottom>
-              {t('transcription.title')}
-            </Typography>
-            {processingTime !== null && (
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                {t('transcription.processingTime', { time: (processingTime).toFixed(1) })}
-              </Typography>
-            )}
-            <Box sx={{ mb: 2 }}>
-              <ButtonGroup variant="contained" aria-label="transcription download options">
-                <Tooltip title={t('transcription.download.vtt')}>
-                  <Button
-                    onClick={() => downloadTranscription(transcription, 'vtt', originalFileName)}
-                    startIcon={<DownloadIcon />}
-                  >
-                    VTT
-                  </Button>
-                </Tooltip>
-                <Tooltip title={t('transcription.download.srt')}>
-                  <Button
-                    onClick={() => downloadTranscription(transcription, 'srt', originalFileName)}
-                    startIcon={<DownloadIcon />}
-                  >
-                    SRT
-                  </Button>
-                </Tooltip>
-                <Tooltip title={t('transcription.download.json')}>
-                  <Button
-                    onClick={() => downloadTranscription(transcription, 'json', originalFileName)}
-                    startIcon={<DownloadIcon />}
-                  >
-                    JSON
-                  </Button>
-                </Tooltip>
-                <Tooltip title={t('transcription.download.text')}>
-                  <Button
-                    onClick={() => downloadTranscription(transcription, 'text', originalFileName)}
-                    startIcon={<DownloadIcon />}
-                  >
-                    TXT
-                  </Button>
-                </Tooltip>
-              </ButtonGroup>
-            </Box>
-            <Paper sx={{ p: 2, maxHeight: 400, overflow: 'auto' }}>
-              {transcription.map((segment, index) => (
-                <Typography key={index} variant="body1" paragraph>
-                  <Box component="span" sx={{ color: 'text.secondary', fontSize: '0.875rem', mr: 1 }}>
-                    [{formatTime(segment.start)} - {formatTime(segment.end)}]
-                  </Box>
-                  {segment.text}
-                </Typography>
-              ))}
-            </Paper>
-          </Container>
-        )}
+        <Box sx={{ mb: 4 }}>
+          <Logs logs={logs} onClear={clearLogs} />
+        </Box>
       </Container>
     </ThemeProvider>
   );
 };
 
 const App: React.FC = () => {
-  return (
-    <LanguageProvider>
-      <AppContent />
-    </LanguageProvider>
-  );
+  return <AppContent />;
 };
 
-export default App; 
+export default App;

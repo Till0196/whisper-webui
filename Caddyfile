@@ -30,20 +30,8 @@
     # 静的ファイルの圧縮
     encode gzip zstd
 
-    # Whisper APIのプロキシ設定（Viteの設定と同等）
-    handle /whisper/* {
-        uri strip_prefix /whisper
-        reverse_proxy {$VITE_SERVER_PROXY_URL} {
-            # Viteのproxy設定と同じヘッダー設定
-            header_up Host {upstream_hostport}
-            header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-            header_up X-Forwarded-Host {host}
-            # オリジナルのUser-Agentを保持
-            header_up User-Agent {>User-Agent}
-        }
-    }
+    # プロキシ設定をインポート（存在する場合のみ読み込まれる）
+    import /etc/caddy/conf.d/proxy.conf
 
     # 静的ファイルのキャッシュ設定
     @static {

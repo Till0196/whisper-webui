@@ -1,21 +1,33 @@
-FROM caddy:2-alpine
-
-# 必要なパッケージのインストール
-RUN apk add --no-cache nodejs npm
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
-# アプリケーションのファイルをコピー
-COPY . .
-COPY Caddyfile /etc/caddy/Caddyfile
-
-# 依存関係のインストール
+COPY package*.json ./
 RUN npm install
 
-# ポートの公開
-EXPOSE 3000
+COPY . .
+RUN npm run build
 
-# 起動コマンドの設定
-CMD npm run build && \
-    cp -r /app/dist/* /srv/ && \
-    caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+FROM caddy:2-alpine AS release
+
+# 必要なパッケージのインストール
+RUN apk add --no-cache gettext
+
+# 作業ディレクトリの作成
+WORKDIR /srv
+
+# 必要なディレクトリの作成
+RUN mkdir -p /etc/caddy/conf.d
+
+# ビルド済みファイルのコピー
+COPY --from=builder /app/dist /app/dist
+
+# entrypoint.shのコピーと実行権限の付与
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Caddyfileのコピー
+COPY Caddyfile /etc/caddy/Caddyfile
+
+# エントリーポイントの設定
+ENTRYPOINT ["/entrypoint.sh"]

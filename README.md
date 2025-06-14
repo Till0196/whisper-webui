@@ -70,7 +70,48 @@ VITE_WHISPER_API_URL=http://localhost:9000  # Whisperサーバーのデフォル
 VITE_WHISPER_API_TOKEN=                     # デフォルトのAPIキー
 VITE_HEALTH_CHECK_URL=                      # ヘルスチェックURL
 VITE_USE_SERVER_PROXY=false                 # プロキシモードの有効/無効
+VITE_HIDE_CREDENTIALS=false                 # 認証情報を隠すかどうか
+VITE_ALLOW_CREDENTIAL_EDIT=true             # プロキシモード無効時に認証情報の編集を許可するか
 ```
+
+## 設定方法
+
+### 開発環境
+
+開発環境では、`.env`ファイルを使用して設定します：
+
+```
+VITE_WHISPER_API_URL=http://localhost:9000
+VITE_WHISPER_API_TOKEN=
+VITE_USE_SERVER_PROXY=false
+VITE_SERVER_PROXY_URL=http://localhost:9000
+VITE_APP_TITLE=Whisper WebUI
+VITE_HEALTH_CHECK_URL=
+VITE_ENVIRONMENT=development
+```
+
+### 本番環境
+
+本番環境（ビルド後のSPA）では、`public/config.js`を使用します：
+
+1. `public/config.js.example`を`public/config.js`にコピーします
+2. 必要に応じて設定を変更します
+
+```js
+window.APP_CONFIG = {
+  WHISPER_API_URL: "http://localhost:9000",
+  WHISPER_API_TOKEN: "",
+  USE_SERVER_PROXY: "false",
+  SERVER_PROXY_URL: "http://localhost:9000",
+  APP_TITLE: "Whisper WebUI",
+  HEALTH_CHECK_URL: "",
+  ENVIRONMENT: "production",
+  HIDE_CREDENTIALS: "false",
+  ALLOW_CREDENTIAL_EDIT: "true"
+};
+```
+
+この方法により、Dockerコンテナを再ビルドすることなく設定を変更できます。
 
 ## ローカル開発
 
@@ -90,4 +131,53 @@ npm run build
 - 音声ファイルへの変換はクライアントサイドで処理されるため、ブラウザのメモリ制限に注意が必要です
 - 大きなファイルは自動的に分割して処理されます
 - APIキーは環境変数またはUIから設定可能です
-- ブラウザのローカルストレージに設定が保存されます 
+- ブラウザのローカルストレージに設定が保存されます
+
+## セキュリティ設定
+
+### 認証情報の保護
+
+APIエンドポイントとトークンを隠すには、以下の設定を行います：
+
+1. 環境変数またはconfig.jsで`HIDE_CREDENTIALS`を`true`に設定
+2. 必要に応じて`ALLOW_CREDENTIAL_EDIT`の設定を変更
+   - `true`: プロキシモードが無効の場合に編集可能
+   - `false`: 常に編集不可
+
+例（Docker-composeの場合）:
+```yaml
+environment:
+  HIDE_CREDENTIALS: "true"
+  ALLOW_CREDENTIAL_EDIT: "false"
+```
+
+### プロキシモード
+
+プロキシモードを有効にすると、クライアントはサーバーを介してWhisper APIにアクセスします。
+これにより、クライアント側でAPIキーを扱う必要がなくなり、セキュリティが向上します。
+
+1. `USE_SERVER_PROXY`を`true`に設定
+2. サーバー側のCaddyがAPIリクエストを中継
+3. 必要に応じて`HIDE_CREDENTIALS`を設定し、UIでの表示を制限
+
+プロキシモード有効時は `/whisper` エンドポイントを通じてAPIリクエストが中継されます。
+
+# プロキシモードの強制無効化
+
+サーバープロキシモードを強制的に無効化し、UIでの変更を禁止するには：
+
+```
+# .env または環境変数
+USE_SERVER_PROXY=false
+VITE_USE_SERVER_PROXY=false
+```
+
+または、Docker Composeの場合：
+
+```yaml
+environment:
+  USE_SERVER_PROXY: "false"
+  VITE_USE_SERVER_PROXY: "false"
+```
+
+この設定を行うと、UIでサーバープロキシのトグルが無効化され、常にクライアント側から直接APIにアクセスするようになります。

@@ -1,0 +1,56 @@
+/**
+ * Whisper WebUI設定ファイル
+ * 
+ * このファイルを 'config.js' にコピーして使用してください
+ * 本番環境でアプリケーションの設定を変更する場合は、このファイルを編集します
+ * 
+ * セキュリティに関する重要な注意：
+ * HIDE_CREDENTIALS="true"に設定した場合：
+ * 1. 自動的にUSE_SERVER_PROXY="true"に設定されます（UIで変更不可）
+ * 2. 自動的にALLOW_CREDENTIAL_EDIT="false"に設定されます
+ * 3. APIエンドポイントとトークンはconfig.jsには保存されません
+ * 4. 代わりにこれらの値はCaddyfile経由で環境変数から直接読み込まれます
+ * 
+ * 本番環境で認証情報を保護するには、HIDE_CREDENTIALS="true"に設定し、
+ * 環境変数またはDocker Composeで実際のAPIエンドポイントとトークンを設定してください。
+ */
+window.APP_CONFIG = {
+  // Whisper APIのエンドポイントURL
+  // 注意：HIDE_CREDENTIALS="true"の場合、この値は無視され、
+  // 環境変数WHISPER_API_URLの値がCaddyfileで使用されます
+  WHISPER_API_URL: "http://localhost:9000",
+
+  // API認証トークン（必要な場合）
+  // 注意：HIDE_CREDENTIALS="true"の場合、この値は無視され、
+  // 環境変数WHISPER_API_TOKENの値がCaddyfileで使用されます
+  WHISPER_API_TOKEN: "",
+
+  // サーバープロキシを使用するかどうか
+  // HIDE_CREDENTIALS="true"の場合、常に"true"に強制設定されます
+  // "false"に設定すると、UIでのプロキシ設定が無効化され、常にクライアント側から直接APIにアクセスします
+  USE_SERVER_PROXY: "false",
+
+  // サーバープロキシURL
+  SERVER_PROXY_URL: "http://localhost:9000",
+
+  // アプリケーションのタイトル
+  APP_TITLE: "Whisper WebUI",
+
+  // ヘルスチェックURL（オプション）
+  HEALTH_CHECK_URL: "",
+
+  // 環境設定（development/production）
+  ENVIRONMENT: "production",
+  
+  // APIエンドポイントとトークンを隠すかどうか
+  // 「true」に設定すると、以下の効果があります：
+  // 1. ユーザーにAPIエンドポイントとトークンが表示されなくなります
+  // 2. プロキシモードが強制的に有効になります
+  // 3. 認証情報の編集が禁止されます
+  // 4. APIエンドポイントとトークンはconfig.jsに保存されなくなります
+  HIDE_CREDENTIALS: "false",
+  
+  // プロキシモード無効時に認証情報の編集を許可するかどうか
+  // HIDE_CREDENTIALS="true"の場合、常に"false"に強制設定されます
+  ALLOW_CREDENTIAL_EDIT: "true"
+};
