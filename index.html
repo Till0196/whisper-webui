@@ -30,6 +30,19 @@
         : 'Audio transcription web application powered by Whisper';
       document.querySelector('meta[name="description"]').setAttribute('content', description);
     </script>
+    <!-- ランタイム設定ファイルの読み込み -->
+    <script>
+      // config.jsを非同期で読み込む
+      (function() {
+        var script = document.createElement('script');
+        script.src = '/config.js';
+        script.async = false; // 順序を保証
+        script.onerror = function() {
+          console.warn('config.js could not be loaded. Using environment variables.');
+        };
+        document.head.appendChild(script);
+      })();
+    </script>
   </head>
   <body>
     <noscript>

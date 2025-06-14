@@ -1,14 +1,29 @@
 services:
   whisper-webui:
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
-    image: ghcr.io/till0196/whisper-webui:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # image: ghcr.io/till0196/whisper-webui:latest
     ports:
       - "3000:3000"
     environment:
-      VITE_WHISPER_API_URL: ${VITE_WHISPER_API_URL}
-      VITE_WHISPER_API_TOKEN: ${VITE_WHISPER_API_TOKEN}
-      VITE_USE_SERVER_PROXY: ${VITE_USE_SERVER_PROXY:-true}
-      VITE_SERVER_PROXY_URL: ${VITE_SERVER_PROXY_URL}
-      VITE_APP_TITLE: ${VITE_APP_TITLE:-Whisper WebUI}
+      # Whisper WebUIの設定
+      APP_TITLE: ${APP_TITLE:-Whisper WebUI}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+
+      # Whisper API設定 - HIDE_CREDENTIALS=trueの場合は必須（Caddyfile経由で使用）
+      WHISPER_API_URL: ${WHISPER_API_URL:-http://localhost:9000}
+      WHISPER_API_TOKEN: ${WHISPER_API_TOKEN:-}
+      HEALTH_CHECK_URL: ${HEALTH_CHECK_URL:-}
+      
+      # 認証情報の隠蔽設定 - 最優先設定（trueの場合は他の関連設定を上書き）
+      # trueに設定すると、USE_SERVER_PROXY=true、ALLOW_CREDENTIAL_EDIT=falseに強制設定され、
+      # config.jsにはAPI接続情報が含まれなくなります（Caddyfileからのみ読み込む）
+      HIDE_CREDENTIALS: ${HIDE_CREDENTIALS:-false}
+      
+      # サーバープロキシ設定 - HIDE_CREDENTIALS=trueの場合は常にtrueになる
+      USE_SERVER_PROXY: ${USE_SERVER_PROXY:-true}
+      SERVER_PROXY_URL: ${SERVER_PROXY_URL:-http://localhost:9000}
+      
+      # 認証情報編集設定 - HIDE_CREDENTIALS=trueの場合は常にfalseになる
+      ALLOW_CREDENTIAL_EDIT: ${ALLOW_CREDENTIAL_EDIT:-true}
