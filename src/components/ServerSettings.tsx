@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   Box,
   TextField,
@@ -21,7 +21,18 @@ import LockIcon from '@mui/icons-material/Lock';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import { useConfig } from '../hooks/useConfig';
+import { useApiData } from '../hooks/useApiData';
+import { 
+  useWhisperApiUrl, 
+  useWhisperApiToken, 
+  useWhisperProxyApiUrl, 
+  useWhisperProxyApiToken, 
+  useServerProxy, 
+  useRawServerProxy,
+  useConfigUpdater 
+} from '../store/useConfigStore';
 import { ApiStatus } from '../types';
+import { getConfigValue, getRuntimeConfig, getProxyModeValues, getDirectModeValues } from '../store/configState';
 
 interface ServerSettingsProps {
   apiStatus?: ApiStatus;
@@ -31,123 +42,208 @@ interface ServerSettingsProps {
 const ServerSettings: React.FC<ServerSettingsProps> = ({ apiStatus, onSettingsChange }) => {
   const { t } = useTranslation();
   
-  // 設定を統一的に取得
-  const { config, forceProxyDisabled, proxyLocked, canEditCredentials, updateConfig } = useConfig();
+  // 分離されたフィールドから値を取得
+  const directApiUrl = useWhisperApiUrl();
+  const directApiToken = useWhisperApiToken();
+  const proxyApiUrl = useWhisperProxyApiUrl();
+  const proxyApiToken = useWhisperProxyApiToken();
+  const { useServerProxy: effectiveUseProxy } = useServerProxy(); // 制約適用済み（実際の動作用）
+  const currentUseProxy = useRawServerProxy(); // 制約なしの生の値（UI表示・編集用）
+  
+  // 従来のconfig hook（制約情報とリセット機能のため）
+  const { config, forceProxyDisabled, proxyLocked, canEditCredentials, resetConfig } = useConfig();
+  const updateConfig = useConfigUpdater();
+  
+  // API データ取得フック
+  const { fetchApiData } = useApiData();
   
   const [isExpanded, setIsExpanded] = useState(false);
   const [showApiToken, setShowApiToken] = useState(false);
   
   // 実際のプロキシ状態を計算（制約を考慮）
-  const effectiveUseServerProxy = proxyLocked ? true : (forceProxyDisabled ? false : config.useServerProxy);
+  const effectiveUseServerProxy = effectiveUseProxy; // 既に制約が適用済み
   
-  // 一時設定（ユーザーが編集中の値）
-  const [tempSettings, setTempSettings] = useState({
-    apiUrl: config.whisperApiUrl || '',
-    apiToken: config.whisperApiToken || '',
-    useAuth: !!config.whisperApiToken,
-    useServerProxy: effectiveUseServerProxy
-  });
+  // ローカル編集状態（分離されたフィールドに対応）
+  const [editingDirectUrl, setEditingDirectUrl] = useState(directApiUrl || '');
+  const [editingDirectToken, setEditingDirectToken] = useState(directApiToken || '');
+  const [editingProxyUrl, setEditingProxyUrl] = useState(proxyApiUrl || '');
+  const [editingProxyToken, setEditingProxyToken] = useState(proxyApiToken || '');
+  const [editingUseProxy, setEditingUseProxy] = useState(currentUseProxy); // 制約なしの生の値を使用
   
-  // 認証情報の編集可能性
-  // allowCredentialEdit=trueかつプロキシオフの場合は編集可能
-  const credentialsAreEditable = config.allowCredentialEdit && !tempSettings.useServerProxy;
-  
-  // 初期状態の設定
-  const defaultSettings = {
-    apiUrl: import.meta.env.VITE_WHISPER_API_URL || '',
-    apiToken: import.meta.env.VITE_WHISPER_API_TOKEN || '',
-    useAuth: !!import.meta.env.VITE_WHISPER_API_TOKEN,
-    useServerProxy: config.useServerProxy
-  };
-  
-  // 初期設定が未設定の場合は自動的に設定パネルを開く
+  // 現在のモードに基づいてアクティブな編集値を取得
+  const currentApiUrl = editingUseProxy ? editingProxyUrl : editingDirectUrl;
+  const currentApiToken = editingUseProxy ? editingProxyToken : editingDirectToken;
+  const [editingUseAuth, setEditingUseAuth] = useState(!!currentApiToken);
+
+  // 設定が変更された際に編集状態を同期
   useEffect(() => {
-    if (!config.whisperApiUrl) {
+    setEditingDirectUrl(directApiUrl || '');
+    setEditingDirectToken(directApiToken || '');
+    setEditingProxyUrl(proxyApiUrl || '');
+    setEditingProxyToken(proxyApiToken || '');
+    setEditingUseProxy(currentUseProxy); // 制約なしの生の値を使用
+    setEditingUseAuth(!!(currentUseProxy ? proxyApiToken : directApiToken));
+  }, [directApiUrl, directApiToken, proxyApiUrl, proxyApiToken, currentUseProxy]); // editingUseProxyを依存配列から除外
+  
+  // 設定パネルの自動展開判定
+  useEffect(() => {
+    if (!directApiUrl && !proxyApiUrl && !isExpanded) {
       setIsExpanded(true);
     }
-  }, [config.whisperApiUrl]);
-
-  // 親コンポーネントの設定が変更されたら一時設定も更新
-  useEffect(() => {
-    setTempSettings({
-      apiUrl: config.whisperApiUrl || '',
-      apiToken: config.whisperApiToken || '',
-      useAuth: !!config.whisperApiToken,
-      useServerProxy: config.useServerProxy // 制約適用前の実際の値を使用
-    });
-  }, [config.whisperApiUrl, config.whisperApiToken, config.useServerProxy]);
-
-  // 設定に変更があるかどうかを確認（現在の設定と初期状態の両方と比較）
-  const hasChanges = 
-    tempSettings.apiUrl !== (config.whisperApiUrl || '') ||
-    tempSettings.apiToken !== (config.whisperApiToken || '') ||
-    tempSettings.useAuth !== !!config.whisperApiToken ||
-    tempSettings.useServerProxy !== config.useServerProxy ||
-    tempSettings.apiUrl !== defaultSettings.apiUrl ||
-    tempSettings.apiToken !== defaultSettings.apiToken ||
-    tempSettings.useAuth !== defaultSettings.useAuth ||
-    tempSettings.useServerProxy !== defaultSettings.useServerProxy;
+  }, [directApiUrl, proxyApiUrl, isExpanded]);
 
   // 設定を適用
-  const handleApply = () => {
-    // プロキシモード制約に基づいて最終的な値を決定
-    const finalUseServerProxy = proxyLocked 
-      ? true 
-      : (forceProxyDisabled ? false : tempSettings.useServerProxy);
-      
-    // 設定を更新（updateConfigが制約を適用してくれる）
-    updateConfig({
-      whisperApiUrl: tempSettings.apiUrl,
-      whisperApiToken: tempSettings.apiToken,
-      useServerProxy: finalUseServerProxy
-    });
+  const handleApply = useCallback(async () => {
+    const configUpdate = {
+      whisperApiUrl: editingDirectUrl,
+      whisperApiToken: editingUseAuth ? editingDirectToken : '',
+      whisperProxyApiUrl: editingProxyUrl,
+      whisperProxyApiToken: editingUseAuth ? editingProxyToken : '',
+      useServerProxy: editingUseProxy
+    };
     
-    // tempSettingsを制約適用後の値に更新
-    setTempSettings(prev => ({
-      ...prev,
-      useServerProxy: finalUseServerProxy
-    }));
+    console.log('設定を適用中:', configUpdate);
+    
+    // 設定を更新
+    updateConfig(configUpdate);
+
+    // 設定更新の反映を確実にするため、小さな遅延を追加
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // 設定適用後、即座にAPIデータを再取得
+    try {
+      console.log('設定更新後にAPIデータを再取得中...');
+      await fetchApiData();
+      console.log('APIデータの再取得が正常に完了しました');
+    } catch (error) {
+      console.error('設定更新後のAPIデータ再取得に失敗しました:', error);
+    }
 
     // 設定変更を親コンポーネントに通知
     if (onSettingsChange) {
       onSettingsChange();
     }
-  };
+  }, [editingDirectUrl, editingDirectToken, editingProxyUrl, editingProxyToken, editingUseAuth, editingUseProxy, updateConfig, fetchApiData, onSettingsChange]);
 
-  // 設定を現在の適用値（config.jsまたは環境変数）にリセット
-  const handleReset = () => {
-    setTempSettings({
-      apiUrl: config.whisperApiUrl || '',
-      apiToken: config.whisperApiToken || '',
-      useAuth: !!config.whisperApiToken,
-      useServerProxy: config.useServerProxy
+  // 設定をデフォルト値にリセット（UI状態のみ、適用までは実際の設定変更なし）
+  const handleReset = useCallback(() => {
+    console.log('UI状態を環境/config.jsのデフォルト値にリセット中');
+    
+    // 環境/config.jsのデフォルト値を取得
+    const proxyValues = getProxyModeValues();
+    const directValues = getDirectModeValues();
+    const defaultUseProxy = getRuntimeConfig().USE_SERVER_PROXY === 'true';
+    
+    // UI編集状態をデフォルト値にリセット（実際の設定変更は行わない）
+    setEditingDirectUrl(directValues.apiUrl);
+    setEditingDirectToken(directValues.apiToken || '');
+    setEditingProxyUrl(proxyValues.apiUrl);
+    setEditingProxyToken(proxyValues.apiToken || '');
+    setEditingUseProxy(defaultUseProxy);
+    setEditingUseAuth(!!(defaultUseProxy ? proxyValues.apiToken : directValues.apiToken));
+    
+    console.log('UI状態のリセット完了:', {
+      directUrl: directValues.apiUrl,
+      directToken: directValues.apiToken || '',
+      proxyUrl: proxyValues.apiUrl,
+      proxyToken: proxyValues.apiToken || '',
+      useProxy: defaultUseProxy
     });
-  };
+  }, []);
 
-  // APIエンドポイント欄に表示する値を決定
-  const getApiUrlDisplayValue = () => {
-    if (config.hideCredentials && tempSettings.useServerProxy) {
+  // 表示値の決定
+  const apiUrlDisplayValue = useMemo(() => {
+    if (config.hideCredentials) {
       return '********';
     }
-    return tempSettings.apiUrl;
-  };
+    return currentApiUrl;
+  }, [config.hideCredentials, currentApiUrl]);
 
-  // APIトークン欄に表示する値を決定
-  const getApiTokenDisplayValue = () => {
-    if (config.hideCredentials && tempSettings.useServerProxy) {
+  const apiTokenDisplayValue = useMemo(() => {
+    if (config.hideCredentials) {
       return '********';
     }
-    return tempSettings.apiToken;
-  };
+    return currentApiToken;
+  }, [config.hideCredentials, currentApiToken]);
+
+  // 設定に変更があるかどうかを確認
+  const hasChanges = useMemo(() => {
+    return (
+      editingDirectUrl !== (directApiUrl || '') ||
+      editingDirectToken !== (directApiToken || '') ||
+      editingProxyUrl !== (proxyApiUrl || '') ||
+      editingProxyToken !== (proxyApiToken || '') ||
+      editingUseProxy !== currentUseProxy
+    );
+  }, [
+    editingDirectUrl, editingDirectToken, editingProxyUrl, editingProxyToken, editingUseProxy,
+    directApiUrl, directApiToken, proxyApiUrl, proxyApiToken, currentUseProxy
+  ]);
+
+  // 現在のモードに応じてURL/トークンを更新する関数
+  const updateCurrentUrl = useCallback((newUrl: string) => {
+    if (editingUseProxy) {
+      setEditingProxyUrl(newUrl);
+    } else {
+      setEditingDirectUrl(newUrl);
+    }
+  }, [editingUseProxy]);
+
+  const updateCurrentToken = useCallback((newToken: string) => {
+    if (editingUseProxy) {
+      setEditingProxyToken(newToken);
+    } else {
+      setEditingDirectToken(newToken);
+    }
+  }, [editingUseProxy]);
 
   // プロキシ使用状態の変更をハンドル
-  const handleProxyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // プロキシロックの場合は変更不可（forceProxyDisabledは編集時は制限しない）
-    if (proxyLocked) return;
+  const handleProxyChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('handleProxyChange called:', {
+      proxyLocked,
+      currentChecked: e.target.checked,
+      editingUseProxy
+    });
+    
+    if (proxyLocked) {
+      console.log('Proxy change blocked: proxyLocked is true');
+      return;
+    }
 
     const newProxyState = e.target.checked;
-    setTempSettings(prev => ({ ...prev, useServerProxy: newProxyState }));
-  };
+    console.log('Proxy mode changed to:', newProxyState);
+    
+    setEditingUseProxy(newProxyState);
+    
+    // プロキシモード変更時に適切なデフォルト値を設定
+    if (newProxyState) {
+      // プロキシモードに変更: プロキシ専用の設定値を使用
+      const proxyValues = getProxyModeValues();
+      if (!editingProxyUrl || editingProxyUrl === 'http://localhost:9000') {
+        setEditingProxyUrl(proxyValues.apiUrl);
+      }
+      // プロキシトークンが設定されている場合は自動で適用
+      if (proxyValues.apiToken && !editingProxyToken) {
+        setEditingProxyToken(proxyValues.apiToken);
+        setEditingUseAuth(true);
+      } else {
+        setEditingUseAuth(!!editingProxyToken);
+      }
+    } else {
+      // ダイレクトモードに変更: ダイレクト専用の設定値を使用
+      const directValues = getDirectModeValues();
+      if (!editingDirectUrl || editingDirectUrl === '/api/transcribe') {
+        setEditingDirectUrl(directValues.apiUrl);
+      }
+      // ダイレクトトークンが設定されている場合は自動で適用
+      if (directValues.apiToken && !editingDirectToken) {
+        setEditingDirectToken(directValues.apiToken);
+        setEditingUseAuth(true);
+      } else {
+        setEditingUseAuth(!!editingDirectToken);
+      }
+    }
+  }, [proxyLocked, editingProxyUrl, editingProxyToken, editingDirectUrl, editingDirectToken]);
 
   return (
     <Paper sx={{ p: 2 }}>
@@ -163,7 +259,7 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ apiStatus, onSettingsCh
       <Collapse in={isExpanded}>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {/* 設定が未設定の場合の警告 */}
-          {!config.whisperApiUrl && (
+          {!directApiUrl && !proxyApiUrl && (
             <Alert severity="info" sx={{ mb: 2 }}>
               <AlertTitle>{t('serverSettings.initialSetup')}</AlertTitle>
               {t('serverSettings.initialSetupMessage')}
@@ -171,48 +267,53 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ apiStatus, onSettingsCh
           )}
           
           {/* 認証情報非表示設定の警告表示 */}
-          {config.hideCredentials && tempSettings.useServerProxy && (
+          {config.hideCredentials && (
             <Alert severity="info" sx={{ mb: 2 }}>
               <AlertTitle>{t('serverSettings.credentialsHidden')}</AlertTitle>
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <LockIcon sx={{ mr: 1 }} />
                 {t('serverSettings.credentialsHiddenMessage')}
-                <Typography variant="body2" sx={{ ml: 1 }}>
-                  {t('serverSettings.disableProxyToEdit')}
-                </Typography>
               </Box>
+            </Alert>
+          )}
+          
+          {/* プロキシモード時の説明 */}
+          {editingUseProxy && !config.hideCredentials && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <AlertTitle>{t('serverSettings.proxyModeInfo')}</AlertTitle>
+              {t('serverSettings.proxyModeTokenInfo')}
             </Alert>
           )}
           
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <TextField
-              label={t('serverSettings.apiUrl')}
-              value={getApiUrlDisplayValue()}
-              onChange={(e) => setTempSettings(prev => ({ ...prev, apiUrl: e.target.value }))}
+              label={editingUseProxy ? t('serverSettings.proxyUrl') : t('serverSettings.apiUrl')}
+              value={apiUrlDisplayValue}
+              onChange={(e) => updateCurrentUrl(e.target.value)}
               fullWidth
               margin="normal"
-              disabled={!credentialsAreEditable}
+              disabled={!canEditCredentials}
             />
-            <Tooltip title={t('serverSettings.apiUrlInfo')}>
+            <Tooltip title={editingUseProxy ? t('serverSettings.proxyUrlInfo') : t('serverSettings.apiUrlInfo')}>
               <InfoIcon color="action" sx={{ ml: 1 }} />
             </Tooltip>
           </Box>
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <TextField
-              label={t('serverSettings.apiToken')}
-              value={getApiTokenDisplayValue()}
-              onChange={(e) => setTempSettings(prev => ({ ...prev, apiToken: e.target.value }))}
+              label={editingUseProxy ? t('serverSettings.proxyToken') : t('serverSettings.apiToken')}
+              value={apiTokenDisplayValue}
+              onChange={(e) => updateCurrentToken(e.target.value)}
               fullWidth
               margin="normal"
               type={showApiToken ? "text" : "password"}
-              disabled={!credentialsAreEditable}
+              disabled={!canEditCredentials}
               InputProps={{
                 endAdornment: (
                   <IconButton
                     onClick={() => setShowApiToken(!showApiToken)}
                     edge="end"
-                    disabled={!credentialsAreEditable}
+                    disabled={!canEditCredentials}
                     aria-label={showApiToken ? t('serverSettings.hideApiToken') : t('serverSettings.showApiToken')}
                   >
                     {showApiToken ? <VisibilityOffIcon /> : <VisibilityIcon />}
@@ -220,7 +321,7 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ apiStatus, onSettingsCh
                 ),
               }}
             />
-            <Tooltip title={t('serverSettings.apiTokenInfo')}>
+            <Tooltip title={editingUseProxy ? t('serverSettings.proxyTokenInfo') : t('serverSettings.apiTokenInfo')}>
               <InfoIcon color="action" sx={{ ml: 1 }} />
             </Tooltip>
           </Box>
@@ -228,9 +329,9 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ apiStatus, onSettingsCh
           <FormControlLabel
             control={
               <Switch
-                checked={tempSettings.useAuth}
-                onChange={(e) => setTempSettings(prev => ({ ...prev, useAuth: e.target.checked }))}
-                disabled={!credentialsAreEditable}
+                checked={editingUseAuth}
+                onChange={(e) => setEditingUseAuth(e.target.checked)}
+                disabled={!canEditCredentials}
               />
             }
             label={t('serverSettings.useAuth')}
@@ -239,7 +340,7 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ apiStatus, onSettingsCh
           <FormControlLabel
             control={
               <Switch
-                checked={tempSettings.useServerProxy}
+                checked={editingUseProxy}
                 onChange={handleProxyChange}
                 disabled={proxyLocked}
               />
@@ -285,14 +386,6 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ apiStatus, onSettingsCh
                 : t('serverSettings.proxyLockedEditDisabled')}
             </Alert>
           )}
-          
-          {/* プロキシモードが有効で認証情報編集が可能な場合の警告 */}
-          {tempSettings.useServerProxy && config.hideCredentials && (
-            <Alert severity="warning" sx={{ mt: 1, mb: 1 }}>
-              <AlertTitle>{t('serverSettings.disableProxyToEdit')}</AlertTitle>
-              {t('serverSettings.disableProxyToEditDetailed')}
-            </Alert>
-          )}
 
           <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
             <Button
@@ -306,7 +399,6 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ apiStatus, onSettingsCh
             <Button
               variant="outlined"
               onClick={handleReset}
-              disabled={!hasChanges}
             >
               {t('common.reset')}
             </Button>

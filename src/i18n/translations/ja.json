@@ -27,6 +27,8 @@
     "useServerProxy": "サーバープロキシを使用",
     "apiUrl": "WhisperサーバーのURL",
     "apiToken": "WhisperサーバーのAPIキー",
+    "proxyUrl": "プロキシサーバーのURL",
+    "proxyToken": "プロキシサーバーのAPIキー",
     "status": "ステータス",
     "initialSetup": "初期設定が必要です",
     "initialSetupMessage": "Whisper APIサーバーの設定を行ってください。",
@@ -36,6 +38,8 @@
     "disableProxyToEditDetailed": "プロキシモードが有効の間は認証情報を編集できません。編集するには、プロキシモードを無効にしてください。",
     "apiUrlInfo": "Whisper APIサーバーのエンドポイントURLを入力してください。",
     "apiTokenInfo": "APIキーが必要な場合は入力してください。",
+    "proxyUrlInfo": "プロキシサーバーのエンドポイントURLです。",
+    "proxyTokenInfo": "プロキシサーバーで使用されるAPIキーです。",
     "showApiToken": "APIキーを表示",
     "hideApiToken": "APIキーを非表示",
     "proxyModeInfo": "プロキシモードを使用すると、サーバー側でAPIリクエストが中継されます。",
@@ -46,10 +50,18 @@
     "proxyLockedTitle": "プロキシモードはロックされています",
     "proxyLockedHideCredentials": "認証情報保護モードが有効なため、プロキシモードを変更できません。",
     "proxyLockedEditDisabled": "認証情報編集が無効なため、プロキシモードを変更が無効になっています。",
-    "willBeDisabledOnApply": "適用時に無効化されます"
+    "willBeDisabledOnApply": "適用時に無効化されます",
+    "resetToDefaults": "初期設定に戻す",
+    "resetToDefaultsTooltipProxy": "プロキシモードの設定を初期状態（空白）に戻します",
+    "resetToDefaultsTooltipDirect": "ダイレクトモードの設定をconfig.jsまたは環境変数の初期値に戻します",
+    "proxyModeDisplayOnly": "プロキシモード時は表示のみ",
+    "proxyModeDisplayOnlyMessage": "プロキシモードでは、サーバーから取得した設定値（URL、APIキー、認証状態）が表示されますが編集できません。ダイレクトモードに切り替えると編集可能になります。",
+    "proxyModeTokenInfo": "プロキシモード時のAPIトークン設定。一部のWhisperサーバー実装では、プロキシ経由でもトークンが必要な場合があります。"
   },
   "apiStatus": {
     "healthy": "Whisper APIステータス",
+    "error": "Whisper API接続エラー",
+    "unknown": "Whisper APIステータス不明",
     "message": {
       "success": "Whisper APIサーバーは正常に動作しています",
       "error": "Whisper APIサーバーに接続できません"

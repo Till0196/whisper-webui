@@ -13,6 +13,8 @@
     "useServerProxy": "Use Server Proxy",
     "apiUrl": "Whisper Server URL",
     "apiToken": "Whisper Server API Key",
+    "proxyUrl": "Proxy Server URL",
+    "proxyToken": "Proxy Server API Key",
     "status": "Status",
     "initialSetup": "Initial setup required",
     "initialSetupMessage": "Please configure the Whisper API server.",
@@ -22,6 +24,8 @@
     "disableProxyToEditDetailed": "You cannot edit credentials while proxy mode is enabled. Please disable proxy mode to edit.",
     "apiUrlInfo": "Enter the endpoint URL of the Whisper API server.",
     "apiTokenInfo": "Enter an API key if required.",
+    "proxyUrlInfo": "The endpoint URL of the proxy server.",
+    "proxyTokenInfo": "The API key used by the proxy server.",
     "showApiToken": "Show API Key",
     "hideApiToken": "Hide API Key",
     "proxyModeInfo": "Server proxy mode relays API requests through the server.",
@@ -32,10 +36,18 @@
     "proxyLockedTitle": "Proxy mode is locked",
     "proxyLockedHideCredentials": "Proxy mode cannot be changed because credential protection mode is active.",
     "proxyLockedEditDisabled": "Proxy mode is always enabled because credential editing is disabled.",
-    "willBeDisabledOnApply": "will be disabled on apply"
+    "willBeDisabledOnApply": "will be disabled on apply",
+    "resetToDefaults": "Reset to Initial Settings",
+    "resetToDefaultsTooltipProxy": "Reset proxy mode settings to initial state (empty)",
+    "resetToDefaultsTooltipDirect": "Reset direct mode settings to initial values from config.js or environment variables",
+    "proxyModeDisplayOnly": "Proxy Mode - Display Only",
+    "proxyModeDisplayOnlyMessage": "In proxy mode, server-configured values (URL, API key, authentication status) are displayed for reference but cannot be edited. Switch to direct mode to enable editing.",
+    "proxyModeTokenInfo": "API token setting for proxy mode. Some Whisper server implementations may require tokens even when using proxy mode."
   },
   "apiStatus": {
     "healthy": "Whisper API Status",
+    "error": "Whisper API Connection Error",
+    "unknown": "Whisper API Status Unknown",
     "message": {
       "success": "Whisper API server is running normally",
       "error": "Cannot connect to Whisper API server"

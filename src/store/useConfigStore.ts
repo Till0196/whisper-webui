@@ -1,5 +1,5 @@
 import { StateStore, useStateSelector, useStateUpdater } from '../hooks/useStateManager';
-import { ConfigState, createInitialConfigState, initializeConfigAsync, selectWhisperApiUrl, selectWhisperApiToken, selectUseServerProxy, selectServerProxyUrl, selectAppTitle, selectHealthCheckUrl, selectEnvironment, selectHideCredentials, selectAllowCredentialEdit, selectLoading, selectError, selectForceProxyDisabled, selectCanEditCredentials, selectConfig, saveToLocalStorage, getEffectiveProxyState, isProxyLocked, LOCAL_STORAGE_KEY } from './configState';
+import { ConfigState, createInitialConfigState, initializeConfigAsync, selectWhisperApiUrl, selectWhisperApiToken, selectWhisperProxyApiUrl, selectWhisperProxyApiToken, selectActiveApiUrl, selectActiveApiToken, selectUseServerProxy, selectRawUseServerProxy, selectServerProxyUrl, selectAppTitle, selectHealthCheckUrl, selectEnvironment, selectHideCredentials, selectAllowCredentialEdit, selectLoading, selectError, selectForceProxyDisabled, selectCanEditCredentials, selectConfig, saveToLocalStorage, getEffectiveProxyState, isProxyLocked, LOCAL_STORAGE_KEY, getRuntimeConfig, getConfigValue, getProxyModeValues, getDirectModeValues } from './configState';
 import { useCallback } from 'react';
 
 // グローバルストア（シングルトン）
@@ -28,13 +28,11 @@ export const initializeConfig = async (): Promise<void> => {
     try {
       console.log('Starting config initialization...');
       
-      // バックグラウンドで設定を初期化（ローディング状態にしない）
       const initializedConfig = await initializeConfigAsync();
       
-      // 設定を更新（loading状態は保持しない）
       globalConfigStore.setState(prevState => ({
         ...initializedConfig,
-        loading: false // 明示的にfalseに設定
+        loading: false
       }));
       
       console.log('Config initialization completed');
@@ -42,7 +40,6 @@ export const initializeConfig = async (): Promise<void> => {
     } catch (error) {
       console.error('Failed to initialize config:', error);
       
-      // エラー状態を設定（ローディングは止める）
       globalConfigStore.setState(prevState => ({
         ...prevState,
         loading: false,
@@ -78,7 +75,7 @@ export function useConfigData() {
 }
 
 /**
- * Whisper API URLを購読するhook
+ * Whisper API URL（ダイレクト）を購読するhook
  */
 export function useWhisperApiUrl() {
   const store = useConfigStore();
@@ -87,11 +84,47 @@ export function useWhisperApiUrl() {
 }
 
 /**
- * Whisper API Tokenを購読するhook
+ * Whisper API Token（ダイレクト）を購読するhook
  */
 export function useWhisperApiToken() {
   const store = useConfigStore();
   const stableSelector = useCallback(selectWhisperApiToken, []);
+  return useStateSelector(store, stableSelector);
+}
+
+/**
+ * Whisper Proxy API URLを購読するhook
+ */
+export function useWhisperProxyApiUrl() {
+  const store = useConfigStore();
+  const stableSelector = useCallback(selectWhisperProxyApiUrl, []);
+  return useStateSelector(store, stableSelector);
+}
+
+/**
+ * Whisper Proxy API Tokenを購読するhook
+ */
+export function useWhisperProxyApiToken() {
+  const store = useConfigStore();
+  const stableSelector = useCallback(selectWhisperProxyApiToken, []);
+  return useStateSelector(store, stableSelector);
+}
+
+/**
+ * アクティブなAPI URL（現在のモードに応じた）を購読するhook
+ */
+export function useActiveApiUrl() {
+  const store = useConfigStore();
+  const stableSelector = useCallback(selectActiveApiUrl, []);
+  return useStateSelector(store, stableSelector);
+}
+
+/**
+ * アクティブなAPI Token（現在のモードに応じた）を購読するhook
+ */
+export function useActiveApiToken() {
+  const store = useConfigStore();
+  const stableSelector = useCallback(selectActiveApiToken, []);
   return useStateSelector(store, stableSelector);
 }
 
@@ -105,6 +138,16 @@ export function useServerProxy() {
   const useServerProxy = useStateSelector(store, stableSelectorUse);
   const serverProxyUrl = useStateSelector(store, stableSelectorUrl);
   return { useServerProxy, serverProxyUrl };
+}
+
+/**
+ * 生のサーバープロキシ設定を購読するhook（制約適用なし）
+ */
+export function useRawServerProxy() {
+  const store = useConfigStore();
+  const stableSelector = useCallback(selectRawUseServerProxy, []);
+  const rawUseServerProxy = useStateSelector(store, stableSelector);
+  return rawUseServerProxy;
 }
 
 /**
@@ -169,7 +212,7 @@ export function useProxyLocked() {
 }
 
 /**
- * 設定更新用hook
+ * 設定更新用hook - 分離されたエンドポイント/トークンフィールドに対応
  */
 export function useConfigUpdater() {
   const store = useConfigStore();
@@ -178,66 +221,76 @@ export function useConfigUpdater() {
   const updateConfig = useCallback((newConfig: Partial<ConfigState>) => {
     const currentState = store.getState();
     
-    // 制約の適用と更新
+    console.log('updateConfig called with:', newConfig);
+    
+    // 制約に基づく自動調整
     const updatedConfig = { ...newConfig };
     
-    // 設定値の制約を適用
-    if (updatedConfig.hideCredentials || (newConfig.hideCredentials === undefined && currentState.hideCredentials)) {
-      // 認証情報保護モードでは必ずプロキシを使用し、認証情報編集を不可に
-      updatedConfig.useServerProxy = true;
-      updatedConfig.allowCredentialEdit = false;
-    } else if (!updatedConfig.allowCredentialEdit || 
-              (newConfig.allowCredentialEdit === undefined && !currentState.allowCredentialEdit)) {
-      // 認証情報編集不可の場合もプロキシを強制
-      updatedConfig.useServerProxy = true;
-    }
+    // 制約チェック
+    const hideCredentials = updatedConfig.hideCredentials ?? currentState.hideCredentials;
+    const allowCredentialEdit = updatedConfig.allowCredentialEdit ?? currentState.allowCredentialEdit;
     
-    // forceProxyDisabledはhideCredentialsやallowCredentialEditよりも優先度が低い
-    const hideCredentials = updatedConfig.hideCredentials !== undefined 
-      ? updatedConfig.hideCredentials 
-      : currentState.hideCredentials;
-      
-    const allowCredentialEdit = updatedConfig.allowCredentialEdit !== undefined
-      ? updatedConfig.allowCredentialEdit
-      : currentState.allowCredentialEdit;
-    
-    // 制約に基づいて最終的なプロキシ状態を決定
-    if (!hideCredentials && allowCredentialEdit && currentState.forceProxyDisabled) {
-      updatedConfig.useServerProxy = false;
-    }
-
-    // ローカルストレージに保存する値（ユーザーが変更した値のみ）
-    const configToSave: Partial<ConfigState> = {};
-    
-    // プロキシ設定はユーザーが変更可能
+    // プロキシ設定の制約適用
     if (updatedConfig.useServerProxy !== undefined) {
-      configToSave.useServerProxy = updatedConfig.useServerProxy;
-    }
-    
-    // 認証情報は編集可能な場合のみ保存
-    if (currentState.allowCredentialEdit) {
-      if (updatedConfig.whisperApiUrl !== undefined) {
-        configToSave.whisperApiUrl = updatedConfig.whisperApiUrl;
-      }
-      if (updatedConfig.whisperApiToken !== undefined) {
-        configToSave.whisperApiToken = updatedConfig.whisperApiToken;
+      if (hideCredentials || !allowCredentialEdit) {
+        updatedConfig.useServerProxy = true;
+        console.log('Force proxy due to credential restrictions');
+      } else if (currentState.forceProxyDisabled && updatedConfig.useServerProxy === true) {
+        console.warn('User trying to enable proxy but it is force disabled');
       }
     }
 
-    // 設定をローカルストレージに保存（変更があった場合のみ）
-    if (Object.keys(configToSave).length > 0) {
-      saveToLocalStorage(configToSave);
+    // ローカルストレージに保存（hideCredentialsの場合は認証情報を除外）
+    const storageConfig: Partial<ConfigState> = {};
+    if (updatedConfig.useServerProxy !== undefined) {
+      storageConfig.useServerProxy = updatedConfig.useServerProxy;
     }
+    
+    // ダイレクトモードの設定
+    if (updatedConfig.whisperApiUrl !== undefined && !hideCredentials) {
+      storageConfig.whisperApiUrl = updatedConfig.whisperApiUrl;
+    }
+    if (updatedConfig.whisperApiToken !== undefined && !hideCredentials) {
+      storageConfig.whisperApiToken = updatedConfig.whisperApiToken;
+    }
+    
+    // プロキシモードの設定
+    if (updatedConfig.whisperProxyApiUrl !== undefined && !hideCredentials) {
+      storageConfig.whisperProxyApiUrl = updatedConfig.whisperProxyApiUrl;
+    }
+    if (updatedConfig.whisperProxyApiToken !== undefined && !hideCredentials) {
+      storageConfig.whisperProxyApiToken = updatedConfig.whisperProxyApiToken;
+    }
+    
+    saveToLocalStorage(storageConfig);
+    
+    console.log('Applying config update:', updatedConfig);
     
     // 状態を更新
     updateState(updatedConfig);
-  }, [updateState]);
+  }, [updateState, store]);
 
   return updateConfig;
 }
 
 /**
- * 設定をリセットするhook（ローカルストレージをクリア）
+ * 環境/config.jsからのデフォルト値を取得する関数（モード別）
+ */
+const getDefaultValuesFromEnvironment = () => {
+  // プロキシモードのデフォルト設定を取得
+  const proxyValues = getProxyModeValues();
+  const directValues = getDirectModeValues();
+  const useServerProxy = getConfigValue('VITE_USE_SERVER_PROXY', 'USE_SERVER_PROXY') === 'true';
+  
+  return {
+    proxy: proxyValues,
+    direct: directValues,
+    useServerProxy
+  };
+};
+
+/**
+ * 設定をリセットするhook（環境/config.jsデフォルトに復元）
  */
 export function useConfigReset() {
   const store = useConfigStore();
@@ -251,12 +304,22 @@ export function useConfigReset() {
       console.warn('Failed to clear config from localStorage:', error);
     }
     
-    // 初期状態に戻す
-    const initialState = createInitialConfigState();
-    updateState(initialState);
-  }, [updateState]);
+    // 環境/config.jsのデフォルト値を取得
+    const defaultValues = getDefaultValuesFromEnvironment();
+    
+    console.log('Resetting config to defaults:', defaultValues);
+    
+    // デフォルト値で更新（両方のモードの値を設定）
+    updateState({
+      whisperApiUrl: defaultValues.direct.apiUrl,
+      whisperApiToken: defaultValues.direct.apiToken,
+      whisperProxyApiUrl: defaultValues.proxy.apiUrl,
+      whisperProxyApiToken: defaultValues.proxy.apiToken,
+      useServerProxy: defaultValues.useServerProxy
+    });
+  }, [updateState, store]);
 
-  return resetConfig;
+  return { resetConfig };
 }
 
 /**
@@ -270,6 +333,7 @@ export function useConfig() {
   const forceProxyDisabled = useForceProxyDisabled();
   const proxyLocked = useProxyLocked();
   const updateConfig = useConfigUpdater();
+  const { resetConfig } = useConfigReset();
 
   return { 
     config,
@@ -278,6 +342,7 @@ export function useConfig() {
     forceProxyDisabled,
     proxyLocked,
     canEditCredentials,
-    updateConfig
+    updateConfig,
+    resetConfig
   };
 }

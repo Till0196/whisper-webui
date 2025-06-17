@@ -9,10 +9,20 @@ import {
   useApiOptionsLoadingUpdater,
 } from '../store';
 import { useConfig } from './useConfig';
+import { useActiveApiUrl, useActiveApiToken, useServerProxy, useConfigStore } from '../store/useConfigStore';
+import { selectActiveApiUrl, selectActiveApiToken, selectUseServerProxy } from '../store/configState';
 
 export const useApiData = () => {
   const { config, forceProxyDisabled } = useConfig();
   const [lastConfigHash, setLastConfigHash] = useState('');
+
+  // 分離されたエンドポイント/トークンからアクティブな値を取得
+  const activeApiUrl = useActiveApiUrl();
+  const activeApiToken = useActiveApiToken();
+  const { useServerProxy: effectiveUseServerProxy } = useServerProxy();
+
+  // 設定ストアへの直接アクセス
+  const store = useConfigStore();
 
   // API状態を購読
   const apiStatus = useApiStatus();
@@ -24,31 +34,44 @@ export const useApiData = () => {
   const updateSelectedModel = useSelectedModelUpdater();
   const setApiOptionsLoading = useApiOptionsLoadingUpdater();
 
-  // API設定を動的に生成
+  // API設定を動的に生成（分離されたエンドポイント構成に対応）
   const apiConfig = useMemo(() => ({
-    baseUrl: config.useServerProxy ? '/whisper' : (config.whisperApiUrl || undefined),
-    token: config.whisperApiToken || undefined,
-    useServerProxy: config.useServerProxy
-  }), [config.useServerProxy, config.whisperApiUrl, config.whisperApiToken]);
+    baseUrl: effectiveUseServerProxy ? '/whisper' : (activeApiUrl || undefined),
+    token: activeApiToken || undefined,
+    useServerProxy: effectiveUseServerProxy
+  }), [effectiveUseServerProxy, activeApiUrl, activeApiToken]);
 
-  // プロキシURLの取得
+  // プロキシURLの取得（分離されたエンドポイント構成に対応）
   const getProxyUrl = useCallback(() => {
-    if (forceProxyDisabled || !config.useServerProxy) {
-      return config.whisperApiUrl || '';
+    if (forceProxyDisabled || !effectiveUseServerProxy) {
+      return activeApiUrl || '';
     }
     return '/whisper';
-  }, [config.useServerProxy, config.whisperApiUrl, forceProxyDisabled]);
+  }, [effectiveUseServerProxy, activeApiUrl, forceProxyDisabled]);
 
   // APIオプションとステータスの取得
   const fetchApiData = useCallback(async () => {
+    // 最新の状態を直接取得して使用（Reactフックの更新タイミング問題を回避）
+    const currentState = store.getState();
+    const currentActiveApiUrl = selectActiveApiUrl(currentState);
+    const currentActiveApiToken = selectActiveApiToken(currentState);
+    const currentEffectiveUseServerProxy = selectUseServerProxy(currentState);
+
     try {
       setApiOptionsLoading(true);
       
-      const proxyUrl = getProxyUrl();
-      const useProxyMode = !forceProxyDisabled && config.useServerProxy;
+      // 最新の状態に基づいてプロキシURLを計算
+      let proxyUrl;
+      if (forceProxyDisabled || !currentEffectiveUseServerProxy) {
+        proxyUrl = currentActiveApiUrl || '';
+      } else {
+        proxyUrl = '/whisper';
+      }
+      
+      const useProxyMode = !forceProxyDisabled && currentEffectiveUseServerProxy;
       const url = getApiEndpoint(proxyUrl, API_ENDPOINTS.OPTIONS, useProxyMode);
       
-      const apiToken = config.whisperApiToken || undefined;
+      const apiToken = currentActiveApiToken || undefined;
       const options = await fetchApiOptions(url, apiToken);
       
       updateApiOptions(options);
@@ -71,23 +94,23 @@ export const useApiData = () => {
     } finally {
       setApiOptionsLoading(false);
     }
-  }, [getProxyUrl, config.useServerProxy, config.whisperApiToken, updateApiStatus, updateApiOptions, updateSelectedModel, selectedModel, forceProxyDisabled, setApiOptionsLoading]);
+  }, [store, forceProxyDisabled, updateApiStatus, updateApiOptions, updateSelectedModel, selectedModel, setApiOptionsLoading]);
 
-  // 設定変更時にAPIフェッチをトリガー
+  // 設定変更時にAPIフェッチをトリガー（分離されたエンドポイント構成に対応）
   const handleServerSettingsChange = useCallback(() => {
     const newConfigHash = JSON.stringify({
-      url: config.whisperApiUrl,
-      token: config.whisperApiToken,
-      proxy: config.useServerProxy
+      url: activeApiUrl,
+      token: activeApiToken,
+      proxy: effectiveUseServerProxy
     });
     
     if (newConfigHash !== lastConfigHash) {
       setLastConfigHash(newConfigHash);
-      if (config.whisperApiUrl || config.useServerProxy) {
+      if (activeApiUrl || effectiveUseServerProxy) {
         fetchApiData();
       }
     }
-  }, [config.whisperApiUrl, config.whisperApiToken, config.useServerProxy, lastConfigHash, fetchApiData]);
+  }, [activeApiUrl, activeApiToken, effectiveUseServerProxy, lastConfigHash, fetchApiData]);
 
   return {
     apiStatus,

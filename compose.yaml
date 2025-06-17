@@ -24,6 +24,7 @@ services:
       # サーバープロキシ設定 - HIDE_CREDENTIALS=trueの場合は常にtrueになる
       USE_SERVER_PROXY: ${USE_SERVER_PROXY:-true}
       SERVER_PROXY_URL: ${SERVER_PROXY_URL:-http://localhost:9000}
+      WHISPER_PROXY_TOKEN: ${WHISPER_PROXY_TOKEN:-}
       
       # 認証情報編集設定 - HIDE_CREDENTIALS=trueの場合は常にfalseになる
       ALLOW_CREDENTIAL_EDIT: ${ALLOW_CREDENTIAL_EDIT:-true}

@@ -11,6 +11,9 @@ export interface AppConfig {
   environment: string;
   hideCredentials: boolean;
   allowCredentialEdit: boolean;
+  // 新しいリセット機能
+  resetConfig?: () => void;
+  resetCurrentModeToDefaults?: () => void;
 }
 
 // グローバルな初期化状態管理

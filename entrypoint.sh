@@ -3,6 +3,7 @@
 # デフォルト値の設定
 export WHISPER_API_URL=${WHISPER_API_URL:-""}
 export WHISPER_API_TOKEN=${WHISPER_API_TOKEN:-""}
+export WHISPER_PROXY_TOKEN=${WHISPER_PROXY_TOKEN:-""}
 export HIDE_CREDENTIALS=${HIDE_CREDENTIALS:-"false"}
 export SERVER_PROXY_URL=${SERVER_PROXY_URL:-""}
 export APP_TITLE=${APP_TITLE:-"Whisper WebUI"}
@@ -27,11 +28,13 @@ fi
 generate_config() {
   local whisper_url="$1"
   local whisper_token="$2"
+  local proxy_token="$3"
   
   cat > /srv/config.js << EOF
 window.APP_CONFIG = {
   WHISPER_API_URL: '${whisper_url}',
   WHISPER_API_TOKEN: '${whisper_token}',
+  WHISPER_PROXY_TOKEN: '${proxy_token}',
   USE_SERVER_PROXY: '${USE_SERVER_PROXY}',
   SERVER_PROXY_URL: '${SERVER_PROXY_URL}',
   APP_TITLE: '${APP_TITLE}',
@@ -68,9 +71,9 @@ EOF
 
 # 設定ファイルの生成
 if [ "${HIDE_CREDENTIALS}" = "true" ]; then
-  generate_config "" ""
+  generate_config "" "" ""
 else
-  generate_config "${WHISPER_API_URL}" "${WHISPER_API_TOKEN}"
+  generate_config "${WHISPER_API_URL}" "${WHISPER_API_TOKEN}" "${WHISPER_PROXY_TOKEN}"
 fi
 
 # プロキシ設定の処理

@@ -4,35 +4,62 @@
  * このファイルを 'config.js' にコピーして使用してください
  * 本番環境でアプリケーションの設定を変更する場合は、このファイルを編集します
  * 
+ * モード別設定の動作：
+ * - プロキシモード: サーバー経由でAPIにアクセス
+ * - ダイレクトモード: ブラウザから直接APIにアクセス
+ * - モード切り替え時にそれぞれの設定が保持され、元のモードに戻った時に復元されます
+ * 
+ * プロキシモード時のトークン設定：
+ * - 一部のWhisperサーバー実装では、プロキシ経由でもAPIトークンが必要な場合があります
+ * - WHISPER_PROXY_TOKENで専用トークンを設定できます
+ * - 未設定の場合は、WHISPER_API_TOKENがフォールバックとして使用されます
+ * 
  * セキュリティに関する重要な注意：
  * HIDE_CREDENTIALS="true"に設定した場合：
  * 1. 自動的にUSE_SERVER_PROXY="true"に設定されます（UIで変更不可）
  * 2. 自動的にALLOW_CREDENTIAL_EDIT="false"に設定されます
  * 3. APIエンドポイントとトークンはconfig.jsには保存されません
- * 4. 代わりにこれらの値はCaddyfile経由で環境変数から直接読み込まれます
+ * 4. 代わりにこれらの値は環境変数から直接読み込まれます
  * 
  * 本番環境で認証情報を保護するには、HIDE_CREDENTIALS="true"に設定し、
  * 環境変数またはDocker Composeで実際のAPIエンドポイントとトークンを設定してください。
  */
 window.APP_CONFIG = {
-  // Whisper APIのエンドポイントURL
+  // =========================
+  // ダイレクトモード設定
+  // =========================
+  
+  // Whisper APIのエンドポイントURL（ダイレクトモード用）
   // 注意：HIDE_CREDENTIALS="true"の場合、この値は無視され、
-  // 環境変数WHISPER_API_URLの値がCaddyfileで使用されます
+  // 環境変数WHISPER_API_URLの値が使用されます
   WHISPER_API_URL: "http://localhost:9000",
 
-  // API認証トークン（必要な場合）
+  // API認証トークン（ダイレクトモード用）
   // 注意：HIDE_CREDENTIALS="true"の場合、この値は無視され、
-  // 環境変数WHISPER_API_TOKENの値がCaddyfileで使用されます
+  // 環境変数WHISPER_API_TOKENの値が使用されます
   WHISPER_API_TOKEN: "",
 
+  // =========================
+  // プロキシモード設定
+  // =========================
+  
   // サーバープロキシを使用するかどうか
   // HIDE_CREDENTIALS="true"の場合、常に"true"に強制設定されます
   // "false"に設定すると、UIでのプロキシ設定が無効化され、常にクライアント側から直接APIにアクセスします
   USE_SERVER_PROXY: "false",
 
   // サーバープロキシURL
-  SERVER_PROXY_URL: "http://localhost:9000",
+  SERVER_PROXY_URL: "/api/transcribe",
+  
+  // プロキシモード用APIトークン（必要な場合）
+  // 一部のWhisperサーバー実装では、プロキシ経由でもAPIトークンによる認証が必要
+  // 未設定の場合は、WHISPER_API_TOKENがフォールバックとして使用されます
+  WHISPER_PROXY_TOKEN: "",
 
+  // =========================
+  // アプリケーション設定
+  // =========================
+  
   // アプリケーションのタイトル
   APP_TITLE: "Whisper WebUI",
 
@@ -42,8 +69,12 @@ window.APP_CONFIG = {
   // 環境設定（development/production）
   ENVIRONMENT: "production",
   
+  // =========================
+  // セキュリティ設定
+  // =========================
+  
   // APIエンドポイントとトークンを隠すかどうか
-  // 「true」に設定すると、以下の効果があります：
+  // "true"に設定すると、以下の効果があります：
   // 1. ユーザーにAPIエンドポイントとトークンが表示されなくなります
   // 2. プロキシモードが強制的に有効になります
   // 3. 認証情報の編集が禁止されます
