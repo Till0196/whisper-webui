@@ -49,5 +49,17 @@ export default defineConfig(({ mode }) => {
         },
       })
     },
+    test: {
+      // Vitest設定：validationsフォルダのテストのみ実行
+      include: ['src/validations/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
+      environment: 'jsdom',
+      setupFiles: ['./src/validations/setup.ts'],
+      globals: true,
+      environmentOptions: {
+        jsdom: {
+          url: 'http://localhost:3000',
+        },
+      },
+    },
   };
 }); 
