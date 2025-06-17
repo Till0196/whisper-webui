@@ -5,7 +5,9 @@ import {
   Paper, 
   Button, 
   ButtonGroup,
-  Tooltip
+  Tooltip,
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
 import { 
   ContentCopy as CopyIcon,
@@ -20,12 +22,14 @@ interface TranscriptionResultProps {
   originalFileName: string;
 }
 
-export const TranscriptionResult: React.FC<TranscriptionResultProps> = ({
-  segments,
+export const TranscriptionResult: React.FC<TranscriptionResultProps> = ({ 
+  segments, 
   onCopy,
   originalFileName
 }) => {
   const { t } = useTranslation();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const downloadFile = (content: string, filename: string, mimeType: string) => {
     const blob = new Blob([content], { type: mimeType });
@@ -115,48 +119,105 @@ export const TranscriptionResult: React.FC<TranscriptionResultProps> = ({
         </Typography>
         {segments.length > 0 && (
           <Box sx={{ mb: 2 }}>
-            <ButtonGroup variant="contained" aria-label="transcription download options">
-              <Tooltip title={t('result.download.vtt')}>
-                <Button
-                  onClick={handleDownloadVTT}
-                  startIcon={<DownloadIcon />}
-                >
-                  VTT
-                </Button>
-              </Tooltip>
-              <Tooltip title={t('result.download.srt')}>
-                <Button
-                  onClick={handleDownloadSRT}
-                  startIcon={<DownloadIcon />}
-                >
-                  SRT
-                </Button>
-              </Tooltip>
-              <Tooltip title={t('result.download.json')}>
-                <Button
-                  onClick={handleDownloadJSON}
-                  startIcon={<DownloadIcon />}
-                >
-                  JSON
-                </Button>
-              </Tooltip>
-              <Tooltip title={t('result.download.text')}>
-                <Button
-                  onClick={handleDownloadText}
-                  startIcon={<DownloadIcon />}
-                >
-                  TXT
-                </Button>
-              </Tooltip>
-            </ButtonGroup>
-            <Button
-              variant="outlined"
-              startIcon={<CopyIcon />}
-              onClick={onCopy}
-              sx={{ ml: 2 }}
-            >
-              {t('common.copy')}
-            </Button>
+            {isMobile ? (
+              // モバイル時：縦に並べる
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Tooltip title={t('result.download.vtt')}>
+                  <Button
+                    variant="contained"
+                    onClick={handleDownloadVTT}
+                    startIcon={<DownloadIcon />}
+                    fullWidth
+                  >
+                    VTT
+                  </Button>
+                </Tooltip>
+                <Tooltip title={t('result.download.srt')}>
+                  <Button
+                    variant="contained"
+                    onClick={handleDownloadSRT}
+                    startIcon={<DownloadIcon />}
+                    fullWidth
+                  >
+                    SRT
+                  </Button>
+                </Tooltip>
+                <Tooltip title={t('result.download.json')}>
+                  <Button
+                    variant="contained"
+                    onClick={handleDownloadJSON}
+                    startIcon={<DownloadIcon />}
+                    fullWidth
+                  >
+                    JSON
+                  </Button>
+                </Tooltip>
+                <Tooltip title={t('result.download.text')}>
+                  <Button
+                    variant="contained"
+                    onClick={handleDownloadText}
+                    startIcon={<DownloadIcon />}
+                    fullWidth
+                  >
+                    TXT
+                  </Button>
+                </Tooltip>
+                <Tooltip title={t('common.copy')}>
+                  <Button
+                    variant="outlined"
+                    onClick={onCopy}
+                    startIcon={<CopyIcon />}
+                    fullWidth
+                  >
+                    Copy
+                  </Button>
+                </Tooltip>
+              </Box>
+            ) : (
+              // デスクトップ時：従来通り横に並べる
+              <ButtonGroup variant="contained" aria-label="transcription download options">
+                <Tooltip title={t('result.download.vtt')}>
+                  <Button
+                    onClick={handleDownloadVTT}
+                    startIcon={<DownloadIcon />}
+                  >
+                    VTT
+                  </Button>
+                </Tooltip>
+                <Tooltip title={t('result.download.srt')}>
+                  <Button
+                    onClick={handleDownloadSRT}
+                    startIcon={<DownloadIcon />}
+                  >
+                    SRT
+                  </Button>
+                </Tooltip>
+                <Tooltip title={t('result.download.json')}>
+                  <Button
+                    onClick={handleDownloadJSON}
+                    startIcon={<DownloadIcon />}
+                  >
+                    JSON
+                  </Button>
+                </Tooltip>
+                <Tooltip title={t('result.download.text')}>
+                  <Button
+                    onClick={handleDownloadText}
+                    startIcon={<DownloadIcon />}
+                  >
+                    TXT
+                  </Button>
+                </Tooltip>
+                <Tooltip title={t('common.copy')}>
+                  <Button
+                    onClick={onCopy}
+                    startIcon={<CopyIcon />}
+                  >
+                    Copy
+                  </Button>
+                </Tooltip>
+              </ButtonGroup>
+            )}
           </Box>
         )}
       </Box>
@@ -178,4 +239,4 @@ export const TranscriptionResult: React.FC<TranscriptionResultProps> = ({
       </Box>
     </Paper>
   );
-}; 
+};

@@ -187,7 +187,7 @@ export const TranscriptionSettings: React.FC = () => {
       {/* 温度スライダー */}
       {useTemperature && (
         <Box sx={{ mb: 3, px: 2 }}>
-          <Typography gutterBottom>{t('transcriptionSettings.temperature')}</Typography>
+          <Typography gutterBottom>{t('transcriptionSettings.temperature.label')}</Typography>
           <Slider
             value={temperature}
             onChange={(_, value) => setTemperature(value as number)}
