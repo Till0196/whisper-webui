@@ -19,7 +19,7 @@ export const createInitialAppState = (): AppState => {
     // 文字起こし設定
     useTemperature: false,
     temperature: 0.7,
-    useVadFilter: getStoredValue('useVadFilter', false) as boolean,
+    useVadFilter: getStoredValue('useVadFilter', true) as boolean,
     prompt: '',
     hotwords: [],
     

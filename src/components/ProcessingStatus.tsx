@@ -107,7 +107,7 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
                 )}
                 {step.skipReason && (
                   <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                    ({t('steps.skipped', { reason: step.skipReason })})
+                    {t('steps.skipped', { reason: step.skipReason })}
                   </Typography>
                 )}
               </Typography>

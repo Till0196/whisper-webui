@@ -60,31 +60,38 @@
     "title": "文字起こし設定",
     "model": {
       "label": "モデル",
-      "required": "モデルを選択してください"
+      "required": "モデルを選択してください",
+      "help": "文字起こしに使用するAIモデルを選択します。サイズが大きいモデルほど精度が高くなりますが、処理時間も長くなります。用途に応じて適切なモデルをお選びください。"
     },
     "language": {
       "label": "言語",
-      "auto": "自動検出"
+      "auto": "自動検出",
+      "help": "音声の言語を指定します。「自動検出」を選択すると、AIが自動的に言語を判別します。特定の言語を選択すると、その言語での認識精度が向上する場合があります。"
     },
     "timestampGranularity": {
       "label": "タイムスタンプの粒度",
       "word": "単語単位",
-      "segment": "セグメント単位"
+      "segment": "セグメント単位",
+      "help": "文字起こし結果に付与されるタイムスタンプの詳細度を選択します。「単語単位」では各単語に個別のタイムスタンプが付き、「セグメント単位」では文や段落単位でタイムスタンプが付きます。"
     },
     "vadFilter": {
-      "label": "VADフィルターを使用"
+      "label": "VADフィルターを使用",
+      "help": "VAD（Voice Activity Detection）は音声区間検出技術です。無音部分を自動的に除去し、音声がある部分のみを文字起こし対象にします。ノイズの多い環境や長時間の録音で効果的です。"
     },
     "useTemperature": "温度パラメータを使用",
-    "temperature": "温度パラメータ",
+    "temperature": {
+      "label": "温度パラメータ",
+      "help": "0.0から1.0の値で、AIの出力の確実性を調整します。0.0に近いほど確実で一貫した結果、1.0に近いほど多様で創造的な結果になります。通常は0.0〜0.3を推奨します。"
+    },
     "prompt": {
       "label": "プロンプト",
       "placeholder": "プロンプトを入力してください",
-      "help": "文字起こしを誘導するプロンプトを入力してください"
+      "help": "AIに期待する文字起こしの形式や内容を指示できます。例：「専門用語を正確に認識してください」「句読点を適切に配置してください」など。音声の文脈に関する情報を提供すると精度が向上します。"
     },
     "hotwords": {
       "label": "ホットワード",
       "placeholder": "カンマ区切りで入力してください",
-      "help": "優先的に認識させたい単語を入力してください"
+      "help": "特に重要で正確に認識させたい単語や固有名詞を指定します。会社名、人名、専門用語、商品名など。例：「田中太郎,株式会社ABC,プロジェクトX」"
     }
   },
   "fileUpload": {
@@ -100,7 +107,6 @@
     "converting": "音声データを抽出中... {{progress}}%",
     "gettingDuration": "音声の長さを取得中...",
     "splitting": "音声を分割中...",
-    "startingTranscription": "文字起こしを開始中...",
     "transcribing": "文字起こしを実行中...",
     "uploadingChunk": "チャンク {{current}}/{{total}} をアップロード中...",
     "uploadingFile": "ファイルをアップロード中...",
@@ -120,7 +126,9 @@
     "audioSplitting": "音声の分割",
     "transcription": "文字起こし",
     "finalizing": "最終処理",
-    "chunk": "チャンク {{current}}/{{total}} の処理"
+    "chunk": "チャンク {{current}}/{{total}} の処理",
+    "chunkProcessing": "チャンク {{current}}/{{total}} を処理中",
+    "skipped": "{{reason}}"
   },
   "stepStatus": {
     "pending": "待機中",
@@ -153,7 +161,8 @@
     "durationRetrieved": "音声の長さ: {{duration}}秒",
     "splittingIntoChunks": "音声をチャンクに分割中...",
     "splittingComplete": "音声を{{chunks}}個のチャンクに分割しました",
-    "noSplittingNeeded": "音声ファイルの分割は不要でした ({{fileSize}}MB)",
+    "noSplittingNeeded": "分割不要 ({{fileSize}}MB)",
+    "startingTranscription": "文字起こしを開始中...",
     "sendingToAPI": "Whisper APIサーバーに送信中: {{endpoint}}",
     "chunkProcessed": "チャンク {{current}}/{{total}} の処理が完了しました",
     "fileProcessed": "ファイルの処理が完了しました",
@@ -178,7 +187,8 @@
     "chunkProcessingFailed": "チャンク{{chunk}}の処理に失敗しました: {{error}}",
     "unknown": "不明なエラーが発生しました",
     "modelNotSelected": "モデルを選択してください",
-    "audioSplittingFailed": "音声ファイルの分割に失敗しました",
+    "audioConversionFailed": "音声変換に失敗しました: {{error}}",
+    "audioSplittingFailed": "音声ファイルの分割に失敗しました: {{error}}",
     "browserExtensionError": "ブラウザ拡張機能のエラーが継続しています。拡張機能を無効にしてお試しください。",
     "configError": {
       "title": "設定エラー",

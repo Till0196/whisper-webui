@@ -46,31 +46,38 @@
     "title": "Transcription Settings",
     "model": {
       "label": "Model",
-      "required": "Please select a model"
+      "required": "Please select a model",
+      "help": "Choose the AI model for transcription. Larger models provide higher accuracy but require more processing time. Select the appropriate model based on your accuracy and speed requirements."
     },
     "language": {
       "label": "Language",
-      "auto": "Auto Detect"
+      "auto": "Auto Detect",
+      "help": "Specify the language of the audio content. 'Auto Detect' allows the AI to automatically identify the language. Selecting a specific language may improve recognition accuracy for that language."
     },
     "timestampGranularity": {
       "label": "Timestamp Granularity",
       "word": "Word Level",
-      "segment": "Segment Level"
+      "segment": "Segment Level",
+      "help": "Choose the detail level of timestamps in transcription results. 'Word Level' provides individual timestamps for each word, while 'Segment Level' provides timestamps for sentences or paragraphs."
     },
     "vadFilter": {
-      "label": "Use VAD Filter"
+      "label": "Use VAD Filter",
+      "help": "VAD (Voice Activity Detection) automatically detects and focuses on speech segments while filtering out silent portions. This improves accuracy for noisy environments or long recordings with intermittent speech."
     },
     "useTemperature": "Use Temperature Parameter",
-    "temperature": "Temperature",
+    "temperature": {
+      "label": "Temperature",
+      "help": "Controls the randomness of AI output (0.0-1.0). Lower values (0.0) produce more consistent and confident results, while higher values (1.0) allow for more diverse outputs. Recommended range: 0.0-0.3 for transcription."
+    },
     "prompt": {
       "label": "Prompt",
       "placeholder": "Enter your prompt",
-      "help": "Enter a prompt to guide the transcription"
+      "help": "Provide context or instructions to guide the AI transcription. Examples: 'Focus on technical terminology', 'Include proper punctuation', or describe the topic/domain of the audio content."
     },
     "hotwords": {
       "label": "Hotwords",
       "placeholder": "Enter comma-separated values",
-      "help": "Enter words that should be recognized with higher priority"
+      "help": "Specify important words, proper nouns, or technical terms that should be recognized accurately. Examples: company names, person names, product names, or domain-specific terminology."
     }
   },
   "fileUpload": {
@@ -110,7 +117,8 @@
     "audioSplitting": "Audio Splitting",
     "transcription": "Transcription",
     "chunkProcessing": "Processing Chunk {{current}}/{{total}}",
-    "finalizing": "Finalizing"
+    "finalizing": "Finalizing",
+    "skipped": "{{reason}}"
   },
   "stepStatus": {
     "pending": "Pending",
@@ -144,7 +152,8 @@
     "durationRetrieved": "Audio duration: {{duration}} seconds",
     "splittingIntoChunks": "Splitting audio into chunks...",
     "splittingComplete": "Audio split into {{chunks}} chunks",
-    "noSplittingNeeded": "Audio file splitting is not required ({{fileSize}}MB)",
+    "noSplittingNeeded": "No splitting needed ({{fileSize}}MB)",
+    "startingTranscription": "Starting transcription...",
     "processingChunk": "Processing chunk {{current}}/{{total}}...",
     "processingFile": "Processing file...",
     "uploadingChunk": "Uploading chunk {{current}}/{{total}}...",
@@ -169,7 +178,8 @@
     "chunkProcessingFailed": "Chunk {{chunk}} processing failed: {{error}}",
     "unknown": "An unknown error occurred",
     "modelNotSelected": "Please select a model",
-    "audioSplittingFailed": "Failed to split audio file",
+    "audioConversionFailed": "Audio conversion failed: {{error}}",
+    "audioSplittingFailed": "Failed to split audio file: {{error}}",
     "browserExtensionError": "Browser extension error persists. Please disable extensions and try again.",
     "configError": {
       "title": "Configuration Error",

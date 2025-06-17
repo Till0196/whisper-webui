@@ -62,6 +62,9 @@ const ProcessingStepItem: React.FC<ProcessingStepItemProps> = ({ step, totalChun
     }
   };
 
+  const hasError = step.status === 'error';
+  const errorDetails = hasError ? step.error : null;
+
   const getStepTitle = () => {
     if (step.type === 'chunk' && totalChunks && totalChunks <= 1) {
       return t('steps.transcription');
@@ -79,7 +82,11 @@ const ProcessingStepItem: React.FC<ProcessingStepItemProps> = ({ step, totalChun
         secondary={
           <Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="body2" color="text.secondary">
+              <Typography 
+                variant="body2" 
+                color={hasError ? "error.main" : "text.secondary"}
+                sx={{ fontWeight: hasError ? 'medium' : 'normal' }}
+              >
                 {getStatusText()}
               </Typography>
               {step.status === 'inProgress' && typeof step.progress === 'number' && (
@@ -88,6 +95,17 @@ const ProcessingStepItem: React.FC<ProcessingStepItemProps> = ({ step, totalChun
                 </Typography>
               )}
             </Box>
+            {errorDetails && (
+              <Box sx={{ mt: 1, p: 1, bgcolor: 'error.light', borderRadius: 1, borderLeft: 3, borderColor: 'error.main' }}>
+                <Typography 
+                  variant="caption" 
+                  color="error.dark"
+                  sx={{ fontFamily: 'monospace', fontSize: '0.75rem', lineHeight: 1.4 }}
+                >
+                  {errorDetails}
+                </Typography>
+              </Box>
+            )}
             {step.status === 'inProgress' && typeof step.progress === 'number' && (
               <Box sx={{ width: '100%', mt: 1 }}>
                 <LinearProgress 

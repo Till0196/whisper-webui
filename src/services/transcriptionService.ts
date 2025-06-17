@@ -236,25 +236,38 @@ export class TranscriptionService {
       let lastProgress = 0;
       const updateDebounceMs = 1000; // 更新間隔を1秒に制限
 
-      const { data: wavData, duration } = await convertToWav(file, this.ffmpeg, (progress: number) => {
-        // 進捗更新の頻度を制限（1%刻みで更新かつ時間間隔も考慮）
-        const roundedProgress = Math.round(progress);
-        const now = Date.now();
+      let wavData: Uint8Array;
+      let duration: number;
 
-        // 進捗値が変化していて、かつ前回の更新から一定時間経過している場合のみ更新
-        if ((roundedProgress > lastProgress) && (now - lastProgressUpdate >= updateDebounceMs)) {
-          lastProgress = roundedProgress;
-          lastProgressUpdate = now;
+      try {
+        const result = await convertToWav(file, this.ffmpeg, (progress: number) => {
+          // 進捗更新の頻度を制限（1%刻みで更新かつ時間間隔も考慮）
+          const roundedProgress = Math.round(progress);
+          const now = Date.now();
 
-          // ステップの進捗も更新
-          this.callbacks.onStepsUpdate(steps => updateStepProgress(steps, 'audioConversion', roundedProgress));
-          this.callbacks.onStateUpdate({ 
-            stepProgress: roundedProgress,
-            status: this.t('processing.converting', { progress: roundedProgress.toFixed(1) })
-          });
-          this.callbacks.onProgress(roundedProgress * 0.3); // 変換は全体の30%
-        }
-      }, this.callbacks.onFFmpegLog);
+          // 進捗値が変化していて、かつ前回の更新から一定時間経過している場合のみ更新
+          if ((roundedProgress > lastProgress) && (now - lastProgressUpdate >= updateDebounceMs)) {
+            lastProgress = roundedProgress;
+            lastProgressUpdate = now;
+
+            // ステップの進捗も更新
+            this.callbacks.onStepsUpdate(steps => updateStepProgress(steps, 'audioConversion', roundedProgress));
+            this.callbacks.onStateUpdate({ 
+              stepProgress: roundedProgress,
+              status: this.t('processing.converting', { progress: roundedProgress.toFixed(1) })
+            });
+            this.callbacks.onProgress(roundedProgress * 0.3); // 変換は全体の30%
+          }
+        }, this.callbacks.onFFmpegLog);
+
+        wavData = result.data;
+        duration = result.duration;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown conversion error';
+        this.callbacks.onStepsUpdate(steps => updateStepStatus(steps, 'audioConversion', 'error', errorMessage));
+        this.callbacks.onLog('error', 'errors.audioConversionFailed', { error: errorMessage });
+        throw error;
+      }
 
       // 音声変換完了
       this.callbacks.onStepsUpdate(steps => updateStepStatus(steps, 'audioConversion', 'completed'));
@@ -278,26 +291,35 @@ export class TranscriptionService {
       let lastSplittingProgress = 0;
       const splittingDebounceMs = 1000; // 1秒間隔で更新
 
-      const chunks = await splitIntoChunks(wavData, this.ffmpeg, (progress: number) => {
-        // 進捗更新の頻度を制限（1%刻みで更新かつ時間間隔も考慮）
-        const roundedProgress = Math.round(progress);
-        const now = Date.now();
+      let chunks: Uint8Array[];
 
-        // 進捗値が変化していて、かつ前回の更新から一定時間経過している場合のみ更新
-        if ((roundedProgress > lastSplittingProgress) && (now - lastSplittingUpdate >= splittingDebounceMs)) {
-          lastSplittingProgress = roundedProgress;
-          lastSplittingUpdate = now;
-          
-          // ステップの進捗も更新
-          this.callbacks.onStepsUpdate(steps => updateStepProgress(steps, 'audioSplitting', roundedProgress));
-          this.callbacks.onStateUpdate({ 
-            stepProgress: roundedProgress,
-            status: this.t('processing.audioSplitting', { progress: roundedProgress.toFixed(1) })
-          });
-          // 音声分割は全体の20%として計算
-          this.callbacks.onProgress(30 + roundedProgress * 0.2);
-        }
-      }, this.callbacks.onFFmpegLog, duration);
+      try {
+        chunks = await splitIntoChunks(wavData, this.ffmpeg, (progress: number) => {
+          // 進捗更新の頻度を制限（1%刻みで更新かつ時間間隔も考慮）
+          const roundedProgress = Math.round(progress);
+          const now = Date.now();
+
+          // 進捗値が変化していて、かつ前回の更新から一定時間経過している場合のみ更新
+          if ((roundedProgress > lastSplittingProgress) && (now - lastSplittingUpdate >= splittingDebounceMs)) {
+            lastSplittingProgress = roundedProgress;
+            lastSplittingUpdate = now;
+            
+            // ステップの進捗も更新
+            this.callbacks.onStepsUpdate(steps => updateStepProgress(steps, 'audioSplitting', roundedProgress));
+            this.callbacks.onStateUpdate({ 
+              stepProgress: roundedProgress,
+              status: this.t('processing.audioSplitting', { progress: roundedProgress.toFixed(1) })
+            });
+            // 音声分割は全体の20%として計算
+            this.callbacks.onProgress(30 + roundedProgress * 0.2);
+          }
+        }, this.callbacks.onFFmpegLog, duration);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown splitting error';
+        this.callbacks.onStepsUpdate(steps => updateStepStatus(steps, 'audioSplitting', 'error', errorMessage));
+        this.callbacks.onLog('error', 'errors.audioSplittingFailed', { error: errorMessage });
+        throw error;
+      }
 
       // チャンク分割完了とチャンクステップ作成
       const fileSizeMB = (wavData.length / (1024 * 1024)).toFixed(2);

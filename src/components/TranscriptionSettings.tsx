@@ -10,8 +10,11 @@ import {
   FormControlLabel,
   Slider,
   TextField,
-  Paper
+  Paper,
+  IconButton,
+  Tooltip
 } from '@mui/material';
+import { HelpOutline as HelpIcon } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { 
   useApiOptions,
@@ -136,7 +139,7 @@ export const TranscriptionSettings: React.FC = () => {
           mb: 3 
         }}
       >
-        <Box sx={{ flex: 1 }}>
+        <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
           <FormControlLabel
             control={
               <Switch
@@ -146,9 +149,18 @@ export const TranscriptionSettings: React.FC = () => {
             }
             label={t('transcriptionSettings.vadFilter.label')}
           />
+          <Tooltip 
+            title={t('transcriptionSettings.vadFilter.help')}
+            arrow
+            placement="top"
+          >
+            <IconButton size="small" sx={{ ml: 0.5 }}>
+              <HelpIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Box>
 
-        <Box sx={{ flex: 1 }}>
+        <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
           <FormControlLabel
             control={
               <Switch
@@ -158,6 +170,15 @@ export const TranscriptionSettings: React.FC = () => {
             }
             label={t('transcriptionSettings.useTemperature')}
           />
+          <Tooltip 
+            title={t('transcriptionSettings.temperature.help')}
+            arrow
+            placement="top"
+          >
+            <IconButton size="small" sx={{ ml: 0.5 }}>
+              <HelpIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Box>
 
         <Box sx={{ flex: 1 }}></Box> {/* 空のボックスでレイアウト調整 */}
