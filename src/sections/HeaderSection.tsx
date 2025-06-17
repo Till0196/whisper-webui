@@ -39,7 +39,7 @@ export const HeaderSection: React.FC<HeaderSectionProps> = memo((props) => {
     setMobileMenuOpen(!mobileMenuOpen);
   };
 
-  const handleMobileMenuClose = (event?: React.KeyboardEvent | React.MouseEvent, reason?: string) => {
+  const handleMobileMenuClose = (event: {}, reason: "backdropClick" | "escapeKeyDown") => {
     // バックドロップクリックまたはEscキーの場合のみ閉じる
     if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
       setMobileMenuOpen(false);

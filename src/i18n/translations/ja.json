@@ -101,6 +101,7 @@
     "processing": "ファイルを処理中..."
   },
   "processing": {
+    "title": "処理状況",
     "status": "処理状況",
     "uploading": "ファイルをアップロード中...",
     "currentStep": "現在のステップ",
@@ -117,6 +118,10 @@
     "time": "処理時間: {{time}}秒",
     "initializingFFmpeg": "FFmpeg を初期化中...",
     "currentProgress": "現在の進捗",
+    "overallProgress": "全体の進捗",
+    "progress": "進捗",
+    "chunkProgress": "チャンクの進捗",
+    "startingTranscription": "文字起こしを開始中...",
     "audioSplitting": "音声を分割中... {{progress}}%"
   },
   "steps": {
@@ -126,7 +131,6 @@
     "audioSplitting": "音声の分割",
     "transcription": "文字起こし",
     "finalizing": "最終処理",
-    "chunk": "チャンク {{current}}/{{total}} の処理",
     "chunkProcessing": "チャンク {{current}}/{{total}} を処理中",
     "skipped": "{{reason}}"
   },
@@ -175,11 +179,12 @@
     "uploadingChunk": "チャンク {{current}}/{{total}} をアップロード中...",
     "uploadingFile": "ファイルをアップロード中...",
     "processingChunk": "チャンク {{current}}/{{total}} を処理中...",
+    "processingFile": "ファイルを処理中...",
     "gettingDuration": "音声の長さを取得中...",
     "chunksInfo": "大容量ファイルのため {{chunks}} 個のチャンク（約100MBずつ）に分割しました。",
     "singleFileProcessing": "ファイルサイズが小さいため、分割せずに処理します。",
     "browserExtensionRetry": "ブラウザ拡張機能のエラーを検出しました。再試行中... ({{attempt}}/{{total}})",
-    "browserExtensionError": "ブラウザ拡張機能のエラーが発生しました。"
+    "durationRetrievalFailed": "音声の長さの取得に失敗しました: {{error}}"
   },
   "errors": {
     "apiError": "APIエラーが発生しました",
