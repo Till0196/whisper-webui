@@ -1,24 +1,7 @@
-import { ApiStatus } from '../types';
+import { AppState } from '../types/config';
 
-// アプリケーションの状態型定義
-export interface AppState {
-  // API関連
-  apiStatus: ApiStatus;
-  
-  // 文字起こし設定
-  useTemperature: boolean;
-  temperature: number;
-  useVadFilter: boolean;
-  prompt: string;
-  hotwords: string[];
-  
-  // FFmpeg初期化状態
-  ffmpegPreInitStatus: {
-    isInitializing: boolean;
-    isInitialized: boolean;
-    initError: string | null;
-  };
-}
+// 型定義は types/config.ts に移動しました
+export type { AppState } from '../types/config';
 
 // 初期状態を生成する関数
 export const createInitialAppState = (): AppState => {
@@ -57,16 +40,3 @@ export const selectUseVadFilter = (state: AppState) => state.useVadFilter;
 export const selectPrompt = (state: AppState) => state.prompt;
 export const selectHotwords = (state: AppState) => state.hotwords;
 export const selectFFmpegPreInitStatus = (state: AppState) => state.ffmpegPreInitStatus;
-
-// 複合セレクター用の型定義
-export interface TranscriptionOptions {
-  model: string;
-  language?: string;
-  responseFormat: 'vtt';
-  timestampGranularity: string;
-  temperature?: number;
-  prompt?: string;
-  hotwords?: string[];
-  task: 'transcribe';
-  useVadFilter: boolean;
-}

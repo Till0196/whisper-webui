@@ -304,7 +304,7 @@ export class TranscriptionService {
       this.callbacks.onStepsUpdate(steps => {
         let updatedSteps;
         if (chunks.length === 1) {
-          updatedSteps = updateStepStatus(steps, 'audioSplitting', 'skipped', `分割不要 (${fileSizeMB}MB)`);
+          updatedSteps = updateStepStatus(steps, 'audioSplitting', 'skipped', undefined, this.t('logs.noSplittingNeeded', { fileSize: fileSizeMB }));
         } else {
           updatedSteps = updateStepStatus(steps, 'audioSplitting', 'completed');
         }
@@ -364,7 +364,7 @@ export class TranscriptionService {
         progress: 100,
         currentStep: 'complete',
         stepProgress: 100,
-        status: '処理が完了しました'
+        status: this.t('processing.complete')
       });
 
       return {
@@ -380,7 +380,7 @@ export class TranscriptionService {
         progress: 0,
         currentStep: 'error',
         stepProgress: 0,
-        status: 'エラーが発生しました'
+        status: this.t('processing.error')
       });
       this.callbacks.onLog('error', 'errors.processingFailed', { error: error instanceof Error ? error.message : String(error) });
       throw error;

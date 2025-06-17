@@ -144,7 +144,7 @@
     "durationRetrieved": "Audio duration: {{duration}} seconds",
     "splittingIntoChunks": "Splitting audio into chunks...",
     "splittingComplete": "Audio split into {{chunks}} chunks",
-    "noSplittingNeeded": "Audio file splitting is not required",
+    "noSplittingNeeded": "Audio file splitting is not required ({{fileSize}}MB)",
     "processingChunk": "Processing chunk {{current}}/{{total}}...",
     "processingFile": "Processing file...",
     "uploadingChunk": "Uploading chunk {{current}}/{{total}}...",
