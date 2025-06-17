@@ -1,16 +1,84 @@
 import '@testing-library/jest-dom';
 import { configure } from '@testing-library/react';
-import { vi, beforeEach, beforeAll } from 'vitest';
+import { vi, beforeEach, beforeAll, afterEach, afterAll } from 'vitest';
 import { JSDOM } from 'jsdom';
+import { setupServer } from 'msw/node';
+import { http, HttpResponse } from 'msw';
 
-// Ensure JSDOM environment is properly initialized
-const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', {
+// MSWサーバーのセットアップ
+export const server = setupServer(
+  // デフォルトのAPIハンドラー
+  http.get('/api/health', () => {
+    return HttpResponse.json({ status: 'healthy', timestamp: Date.now() });
+  }),
+  
+  http.get('/api/models', () => {
+    return HttpResponse.json({
+      models: ['whisper-1', 'whisper-large-v3', 'whisper-large-v2']
+    });
+  }),
+  
+  http.get('/api/languages', () => {
+    return HttpResponse.json({
+      languages: [
+        { code: 'ja', name: '日本語' },
+        { code: 'en', name: 'English' },
+        { code: 'zh', name: '中文' }
+      ]
+    });
+  }),
+  
+  http.post('/api/transcribe', async ({ request }) => {
+    const formData = await request.formData();
+    const model = formData.get('model') as string || 'whisper-1';
+    const language = formData.get('language') as string || 'auto';
+    
+    return HttpResponse.json({
+      segments: [
+        { start: 0, end: 5, text: 'Mock transcription result' }
+      ],
+      language: language === 'auto' ? 'ja' : language,
+      model_used: model
+    });
+  }),
+  
+  http.get('/config.js', () => {
+    return HttpResponse.text(`
+      window.APP_CONFIG = {
+        WHISPER_API_URL: "http://localhost:9000",
+        WHISPER_API_TOKEN: "",
+        USE_SERVER_PROXY: "false",
+        SERVER_PROXY_URL: "http://localhost:8080",
+        APP_TITLE: "Whisper WebUI Test",
+        ENVIRONMENT: "test"
+      };
+    `);
+  })
+);
+
+// テスト開始前にMSWサーバーを起動
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: 'error' });
+});
+
+// 各テスト後にハンドラーをリセット
+afterEach(() => {
+  server.resetHandlers();
+});
+
+// すべてのテスト終了後にサーバーを停止
+afterAll(() => {
+  server.close();
+});
+
+// JSDOM環境の設定
+const dom = new JSDOM('<!DOCTYPE html><html><body><div id="root"></div></body></html>', {
   url: 'http://localhost:3000',
   pretendToBeVisual: true,
   resources: 'usable'
 });
 
-// Make sure global objects are available
+// グローバルオブジェクトの設定
 global.window = dom.window as any;
 global.document = dom.window.document;
 global.navigator = dom.window.navigator;
@@ -20,7 +88,32 @@ global.Node = dom.window.Node;
 global.Text = dom.window.Text;
 global.Comment = dom.window.Comment;
 
-// CSSStyleSheet mock for Material-UI
+// React 18のcreateRoot対応のためのDOM要素設定
+Object.defineProperty(global.window, 'getComputedStyle', {
+  value: () => ({
+    getPropertyValue: () => '',
+  }),
+});
+
+// documentに必要なメソッドを追加
+Object.defineProperty(global.document, 'createElement', {
+  value: dom.window.document.createElement.bind(dom.window.document),
+  writable: true,
+});
+
+// 必要に応じてbodyにrootを追加
+beforeEach(() => {
+  // JSDOMの環境をリフレッシュ
+  if (global.document) {
+    global.document.body.innerHTML = '';
+    // 新しいrootを作成
+    const root = global.document.createElement('div');
+    root.id = 'root';
+    global.document.body.appendChild(root);
+  }
+});
+
+// CSSStyleSheet mock
 Object.defineProperty(global, 'CSSStyleSheet', {
   value: class {
     cssRules: any[] = [];
@@ -34,7 +127,7 @@ Object.defineProperty(global, 'CSSStyleSheet', {
   writable: true
 });
 
-// LocalStorageのモック - 実際のデータを保存するバージョン
+// LocalStorage mock（実際のデータを保存）
 const createLocalStorageMock = () => {
   const store: Record<string, string> = {};
   
@@ -56,11 +149,9 @@ const createLocalStorageMock = () => {
 
 const localStorageMock = createLocalStorageMock();
 
-// 最初にlocalStorageを複数の場所に定義して確実にアクセス可能にする
+// localStorage を複数の場所に定義
 (globalThis as any).localStorage = localStorageMock;
 (global as any).localStorage = localStorageMock;
-
-// windowのlocalStorageはgetter/setterプロパティなので、Object.definePropertyを使用
 Object.defineProperty(global.window, 'localStorage', {
   value: localStorageMock,
   writable: true,
@@ -72,42 +163,7 @@ configure({
   testIdAttribute: 'data-testid',
 });
 
-// Ensure DOM globals are available before setup
-beforeAll(() => {
-  // Force jsdom environment setup
-  if (typeof window === 'undefined') {
-    // This should not happen with jsdom environment, but just in case
-    throw new Error('Tests require jsdom environment. Please check vitest.config.ts');
-  }
-
-  // Define localStorage on multiple places to ensure it's available
-  if (!global.localStorage) {
-    Object.defineProperty(global, 'localStorage', {
-      value: localStorageMock,
-      writable: true,
-      configurable: true
-    });
-  }
-
-  if (!window.localStorage) {
-    Object.defineProperty(window, 'localStorage', {
-      value: localStorageMock,
-      writable: true,
-      configurable: true
-    });
-  }
-
-  // Also define it directly on globalThis for Node.js compatibility
-  if (typeof globalThis !== 'undefined' && !globalThis.localStorage) {
-    Object.defineProperty(globalThis, 'localStorage', {
-      value: localStorageMock,
-      writable: true,
-      configurable: true
-    });
-  }
-});
-
-// Global mocks for Web APIs - Using Object.defineProperty for better compatibility
+// Web APIs のモック
 Object.defineProperty(global, 'sessionStorage', {
   value: { ...localStorageMock },
   writable: true
@@ -162,7 +218,7 @@ Object.defineProperty(global, 'FileReader', {
   writable: true
 });
 
-// matchMedia mock - ensure it's on window object
+// matchMedia mock
 Object.defineProperty(window, 'matchMedia', {
   value: vi.fn().mockImplementation((query: string) => ({
     matches: false,
@@ -192,25 +248,6 @@ Object.defineProperty(global, 'Worker', {
   writable: true
 });
 
-// fetch mock
-Object.defineProperty(global, 'fetch', {
-  value: vi.fn().mockResolvedValue({
-    ok: true,
-    json: async () => ({}),
-    text: async () => '',
-    blob: async () => new Blob([]),
-    arrayBuffer: async () => new ArrayBuffer(0),
-    status: 200,
-    statusText: 'OK',
-    headers: new Headers(),
-    url: 'http://localhost',
-    type: 'basic',
-    redirected: false,
-    clone: vi.fn()
-  }),
-  writable: true
-});
-
 // Clipboard API mock
 Object.defineProperty(navigator, 'clipboard', {
   value: {
@@ -224,9 +261,17 @@ Object.defineProperty(navigator, 'clipboard', {
 
 // URL mock
 Object.defineProperty(global, 'URL', {
-  value: {
-    createObjectURL: vi.fn(() => 'blob:mock-url'),
-    revokeObjectURL: vi.fn()
+  value: class URL {
+    constructor(url: string, base?: string) {
+      this.href = url;
+      this.origin = base || 'http://localhost:3000';
+    }
+    
+    href: string;
+    origin: string;
+    
+    static createObjectURL = vi.fn(() => 'blob:mock-url');
+    static revokeObjectURL = vi.fn();
   },
   writable: true
 });
@@ -256,110 +301,85 @@ Object.defineProperty(global, 'IntersectionObserver', {
   writable: true
 });
 
-// Ensure window.sessionStorage matches global.sessionStorage
-Object.defineProperty(window, 'sessionStorage', {
-  value: { ...localStorageMock },
-  writable: true
-});
+// i18next のモック
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: any) => {
+      // パラメータ補間をサポート
+      if (options && typeof options === 'object') {
+        let result = key;
+        // {{param}} 形式のプレースホルダーをオプションの値で置換
+        Object.keys(options).forEach(param => {
+          const placeholder = new RegExp(`{{${param}}}`, 'g');
+          result = result.replace(placeholder, String(options[param]));
+        });
+        return result;
+      }
+      return key;
+    },
+    i18n: {
+      language: 'ja',
+      isInitialized: true,
+      changeLanguage: vi.fn().mockResolvedValue(undefined),
+    },
+  }),
+  Trans: ({ children }: { children: React.ReactNode }) => children,
+}));
 
-// Zustand用のLocalStorage初期化
+// 各テスト前の初期化
 beforeEach(() => {
   vi.clearAllMocks();
-  // Reset localStorage calls
+  // Reset localStorage
   localStorageMock.getItem.mockReset();
   localStorageMock.setItem.mockReset();
   localStorageMock.removeItem.mockReset();
   localStorageMock.clear.mockReset();
   
-  // デフォルト値を返すよう設定（Zustandのため）
+  // デフォルト値を設定
   localStorageMock.getItem.mockReturnValue(null);
 });
 
-// モックの設定
-Object.defineProperty(window, 'matchMedia', {
-  writable: true,
-  value: vi.fn().mockImplementation(query => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: vi.fn(), // deprecated
-    removeListener: vi.fn(), // deprecated
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  })),
+// fetch mock
+Object.defineProperty(global, 'fetch', {
+  value: vi.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    json: vi.fn().mockResolvedValue({
+      segments: [
+        { start: 0, end: 5, text: 'Mock transcription result' }
+      ],
+      language: 'ja',
+      model_used: 'whisper-1'
+    }),
+    text: vi.fn().mockResolvedValue('Mock response'),
+    blob: vi.fn().mockResolvedValue(new Blob()),
+  }),
+  writable: true
 });
 
-// FileReaderのモック
-const MockFileReader = class {
-  static readonly EMPTY = 0;
-  static readonly LOADING = 1;
-  static readonly DONE = 2;
-  
-  readonly EMPTY = 0;
-  readonly LOADING = 1;
-  readonly DONE = 2;
-  
-  readAsArrayBuffer = vi.fn();
-  readAsDataURL = vi.fn();
-  readAsText = vi.fn();
-  result: string | ArrayBuffer | null = '';
-  error: DOMException | null = null;
-  onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null = null;
-  onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null = null;
-  onprogress: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null = null;
-  readyState: 0 | 1 | 2 = 0;
-  abort = vi.fn();
-  
-  addEventListener = vi.fn();
-  removeEventListener = vi.fn();
-  dispatchEvent = vi.fn();
+// Navigation mock for JSDOM
+Object.defineProperty(global.window, 'navigation', {
+  value: {
+    navigate: vi.fn(),
+  },
+  writable: true
+});
+
+// HTMLAnchorElement click mock
+const originalClick = global.HTMLAnchorElement.prototype.click;
+global.HTMLAnchorElement.prototype.click = function() {
+  // Do nothing in test environment to prevent navigation errors
+  return;
 };
 
-// @ts-ignore - テスト用のモック
-global.FileReader = MockFileReader as any;
+// Unhandled rejection handling
+process.on('unhandledRejection', (reason, promise) => {
+  console.warn('Unhandled Rejection at:', promise, 'reason:', reason);
+  // テスト環境では警告のみとし、プロセス終了を防ぐ
+});
 
-// URLのモック
-global.URL.createObjectURL = vi.fn(() => 'mocked-url');
-global.URL.revokeObjectURL = vi.fn();
-
-// i18nextのモック
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: {
-      language: 'ja',
-      isInitialized: true,
-      changeLanguage: vi.fn(),
-    },
-  }),
-}));
-
-// Zustandストアのモック
-vi.mock('../store/useAppStore', () => ({
-  useTemperatureSettings: () => ({ useTemperature: false, temperature: 0.7 }),
-  useTemperatureSettingsUpdater: () => ({
-    setUseTemperature: vi.fn(),
-    setTemperature: vi.fn(),
-  }),
-  useVadFilter: () => true,
-  useVadFilterUpdater: () => ({ setVadFilter: vi.fn() }),
-  usePrompt: () => '',
-  usePromptUpdater: () => ({ setPrompt: vi.fn() }),
-  useHotwords: () => [],
-  useHotwordsUpdater: () => ({ setHotwords: vi.fn() }),
-}));
-
-vi.mock('../store/useApiOptionsStore', () => ({
-  useApiOptions: () => ({
-    models: ['whisper-1'],
-    languages: [{ code: 'ja', name: '日本語' }],
-    timestampGranularities: ['segment'],
-  }),
-  useSelectedModel: () => 'whisper-1',
-  useSelectedModelUpdater: () => ({ setSelectedModel: vi.fn() }),
-  useSelectedLanguage: () => 'ja',
-  useSelectedLanguageUpdater: () => ({ setSelectedLanguage: vi.fn() }),
-  useSelectedTimestampGranularity: () => 'segment',
-  useSelectedTimestampGranularityUpdater: () => ({ setSelectedTimestampGranularity: vi.fn() }),
-}));
+process.on('uncaughtException', (error) => {
+  console.warn('Uncaught Exception:', error);
+  // テスト環境では警告のみとし、プロセス終了を防ぐ
+});

@@ -13,7 +13,10 @@
       "system": "自動"
     },
     "apply": "適用",
-    "reset": "リセット"
+    "reset": "リセット",
+    "upload": {
+      "plural": "ファイルをアップロード"
+    }
   },
   "serverSettings": {
     "title": "サーバー設定",

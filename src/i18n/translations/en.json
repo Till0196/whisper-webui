@@ -211,7 +211,8 @@
       "system": "Auto"
     },
     "apply": "Apply",
-    "reset": "Reset"
+    "reset": "Reset",
+    "upload": "Upload"
   },
   "languages": {
     "af": "Afrikaans",

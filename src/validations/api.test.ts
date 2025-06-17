@@ -1,218 +1,433 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { transcribeAudio, checkApiHealth, fetchApiOptions } from '../lib/whisperApi';
+import type { TranscriptionOptions } from '../types';
 
-// APIモックの設定
+// Disable MSW for this test file to allow direct fetch mocking
+vi.mock('msw/node', () => ({
+  setupServer: () => ({
+    listen: vi.fn(),
+    close: vi.fn(),
+    resetHandlers: vi.fn(),
+    use: vi.fn(),
+  }),
+}));
+
+// Mock fetch globally
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-describe('Whisper API Tests', () => {
+class MockAbortController {
+  abort = vi.fn();
+  signal = { 
+    aborted: false, 
+    addEventListener: vi.fn(), 
+    removeEventListener: vi.fn(),
+    onabort: null,
+    reason: undefined,
+    throwIfAborted: vi.fn(),
+    dispatchEvent: vi.fn()
+  };
+}
+
+(global as any).AbortController = MockAbortController;
+
+// Global timeout configuration
+const TEST_TIMEOUT = 10000;
+
+// Test utilities
+const createMockFile = (name: string, size: number, type: string = 'audio/wav'): File => {
+  const content = new ArrayBuffer(size);
+  return new File([content], name, { type });
+};
+
+const createMockResponse = (data: any, status: number = 200, headers: Record<string, string> = {}): Response => {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: status === 200 ? 'OK' : 'Error',
+    headers: new Headers(headers),
+    json: vi.fn().mockResolvedValue(data),
+    text: vi.fn().mockResolvedValue(typeof data === 'string' ? data : JSON.stringify(data)),
+    blob: vi.fn().mockResolvedValue(new Blob([JSON.stringify(data)])),
+    arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(0)),
+    clone: vi.fn().mockReturnThis(),
+  } as unknown as Response;
+};
+
+const defaultTranscriptionOptions: TranscriptionOptions = {
+  model: 'base',
+  language: 'auto',
+  task: 'transcribe',
+  responseFormat: 'json',
+  temperature: 0.0,
+  useVadFilter: false,
+};
+
+const mockSuccessResponse = {
+  text: 'Hello, this is a test transcription.',
+  segments: [
+    {
+      id: 0,
+      seek: 0,
+      start: 0.0,
+      end: 3.5,
+      text: 'Hello, this is a test transcription.',
+      tokens: [1, 2, 3, 4, 5],
+      temperature: 0.0,
+      avg_logprob: -0.5,
+      compression_ratio: 2.0,
+      no_speech_prob: 0.1,
+    }
+  ],
+  language: 'en',
+  duration: 3.5,
+};
+
+describe('API Tests', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     mockFetch.mockClear();
+    // Override the setup.ts fetch mock
+    global.fetch = mockFetch;
   });
 
   afterEach(() => {
-    vi.resetAllMocks();
+    vi.restoreAllMocks();
   });
 
-  describe('API Status Check', () => {
-    test('APIステータスチェック - 成功', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ status: 'ready', version: '1.0.0' }),
-      });
+  describe('transcribeAudio', () => {
+    it('should successfully transcribe an audio file', async () => {
+      const file = createMockFile('test.wav', 1024);
+      const url = 'http://localhost:8000';
+      mockFetch.mockClear();
+      mockFetch.mockResolvedValueOnce(createMockResponse(mockSuccessResponse));
 
-      const checkApiStatus = async (): Promise<{ status: string; version?: string }> => {
-        const response = await fetch('/api/status');
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        return response.json();
-      };
+      const result = await transcribeAudio(url, file, defaultTranscriptionOptions);
 
-      const result = await checkApiStatus();
-      expect(result.status).toBe('ready');
-      expect(result.version).toBe('1.0.0');
-      expect(mockFetch).toHaveBeenCalledWith('/api/status');
-    });
-
-    test('APIステータスチェック - エラー', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        statusText: 'Internal Server Error',
-      });
-
-      const checkApiStatus = async (): Promise<{ status: string }> => {
-        const response = await fetch('/api/status');
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        return response.json();
-      };
-
-      await expect(checkApiStatus()).rejects.toThrow('HTTP 500');
-    });
-  });
-
-  describe('Transcription Request', () => {
-    test('文字起こしリクエスト - 基本パラメータ', async () => {
-      const mockResponse = {
-        segments: [
-          { start: 0, end: 5, text: 'Hello world' }
-        ],
-        language: 'en'
-      };
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => mockResponse,
-      });
-
-      const transcribeAudio = async (formData: FormData) => {
-        const response = await fetch('/api/transcribe', {
-          method: 'POST',
-          body: formData,
-        });
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        
-        return response.json();
-      };
-
-      const formData = new FormData();
-      formData.append('audio', new Blob(['fake audio data']), 'test.mp3');
-      formData.append('model', 'whisper-1');
-      formData.append('language', 'en');
-
-      const result = await transcribeAudio(formData);
+      expect(mockFetch).toHaveBeenCalledOnce();
+      expect(result).toEqual(mockSuccessResponse);
       
-      expect(result.segments).toHaveLength(1);
-      expect(result.segments[0].text).toBe('Hello world');
-      expect(result.language).toBe('en');
-    });
+      const [fetchUrl, options] = mockFetch.mock.calls[0];
+      expect(fetchUrl).toContain('/v1/audio/transcriptions');
+      expect(options.method).toBe('POST');
+      expect(options.body).toBeInstanceOf(FormData);
+    }, TEST_TIMEOUT);
 
-    test('文字起こしリクエスト - 高度なパラメータ', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ segments: [], language: 'ja' }),
-      });
-
-      const transcribeWithAdvancedOptions = async (
-        audioBlob: Blob,
-        options: {
-          model: string;
-          language?: string;
-          temperature?: number;
-          prompt?: string;
-          vadFilter?: boolean;
-          timestampGranularity?: string;
-        }
-      ) => {
-        const formData = new FormData();
-        formData.append('audio', audioBlob, 'audio.mp3');
-        formData.append('model', options.model);
-        
-        if (options.language) formData.append('language', options.language);
-        if (options.temperature !== undefined) formData.append('temperature', options.temperature.toString());
-        if (options.prompt) formData.append('prompt', options.prompt);
-        if (options.vadFilter !== undefined) formData.append('vad_filter', options.vadFilter.toString());
-        if (options.timestampGranularity) formData.append('timestamp_granularity', options.timestampGranularity);
-
-        const response = await fetch('/api/transcribe', {
-          method: 'POST',
-          body: formData,
-        });
-
-        return response.json();
-      };
-
-      const audioBlob = new Blob(['fake audio'], { type: 'audio/mp3' });
-      await transcribeWithAdvancedOptions(audioBlob, {
-        model: 'whisper-1',
-        language: 'ja',
-        temperature: 0.3,
-        prompt: '専門用語を正確に認識してください',
-        vadFilter: true,
-        timestampGranularity: 'word'
-      });
-
-      expect(mockFetch).toHaveBeenCalledWith('/api/transcribe', {
-        method: 'POST',
-        body: expect.any(FormData),
-      });
-    });
-  });
-
-  describe('File Upload Validation', () => {
-    test('サポートされているファイル形式', () => {
-      const supportedFormats = ['mp3', 'wav', 'm4a', 'mp4'];
-      
-      const isValidAudioFile = (filename: string): boolean => {
-        const extension = filename.split('.').pop()?.toLowerCase();
-        return supportedFormats.includes(extension || '');
-      };
-
-      expect(isValidAudioFile('audio.mp3')).toBe(true);
-      expect(isValidAudioFile('recording.wav')).toBe(true);
-      expect(isValidAudioFile('podcast.m4a')).toBe(true);
-      expect(isValidAudioFile('video.mp4')).toBe(true);
-      expect(isValidAudioFile('document.pdf')).toBe(false);
-      expect(isValidAudioFile('image.jpg')).toBe(false);
-    });
-
-    test('ファイルサイズ制限', () => {
-      const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
-
-      const isValidFileSize = (fileSize: number): boolean => {
-        return fileSize <= MAX_FILE_SIZE;
-      };
-
-      expect(isValidFileSize(50 * 1024 * 1024)).toBe(true); // 50MB
-      expect(isValidFileSize(100 * 1024 * 1024)).toBe(true); // 100MB
-      expect(isValidFileSize(150 * 1024 * 1024)).toBe(false); // 150MB
-    });
-  });
-
-  describe('Error Handling', () => {
-    test('ネットワークエラーの処理', async () => {
+    it('should handle network errors gracefully', async () => {
+      const file = createMockFile('test.wav', 1024);
+      const url = 'http://localhost:8000';
       mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
-      const apiCall = async () => {
-        try {
-          const response = await fetch('/api/status');
-          return response.json();
-        } catch (error) {
-          throw new Error(`Network error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
+      await expect(transcribeAudio(url, file, defaultTranscriptionOptions))
+        .rejects.toThrow('Network error');
+    }, TEST_TIMEOUT);
+
+    it('should handle HTTP error responses', async () => {
+      const file = createMockFile('test.wav', 1024);
+      const url = 'http://localhost:8000';
+      const errorResponse = createMockResponse(
+        { error: 'Invalid file format' }, 
+        400
+      );
+      mockFetch.mockResolvedValueOnce(errorResponse);
+
+      await expect(transcribeAudio(url, file, defaultTranscriptionOptions))
+        .rejects.toThrow();
+    }, TEST_TIMEOUT);
+
+    it('should handle large files correctly', async () => {
+      const largeFile = createMockFile('large.wav', 100 * 1024 * 1024); // 100MB
+      const url = 'http://localhost:8000';
+      mockFetch.mockResolvedValueOnce(createMockResponse(mockSuccessResponse));
+
+      const result = await transcribeAudio(url, largeFile, defaultTranscriptionOptions);
+      
+      expect(result).toEqual(mockSuccessResponse);
+      const formData = mockFetch.mock.calls[0][1].body as FormData;
+      expect(formData.get('file')).toBe(largeFile);
+    }, TEST_TIMEOUT);
+
+    it('should properly format FormData with all options', async () => {
+      const file = createMockFile('test.wav', 1024);
+      const url = 'http://localhost:8000';
+      const options: TranscriptionOptions = {
+        ...defaultTranscriptionOptions,
+        model: 'large',
+        language: 'ja',
+        temperature: 0.5,
+        timestampGranularity: 'word',
+        useVadFilter: true,
+        prompt: 'Custom prompt',
       };
 
-      await expect(apiCall()).rejects.toThrow('Network error: Network error');
-    });
+      mockFetch.mockResolvedValueOnce(createMockResponse(mockSuccessResponse));
 
-    test('HTTPステータスエラーの処理', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        statusText: 'Not Found',
-        json: async () => ({ error: 'Endpoint not found' }),
+      await transcribeAudio(url, file, options);
+
+      const formData = mockFetch.mock.calls[0][1].body as FormData;
+      expect(formData.get('model')).toBe('large');
+      expect(formData.get('language')).toBe('ja');
+      expect(formData.get('timestamp_granularities')).toBe('word');
+      expect(formData.get('vad_filter')).toBe('true');
+      // Note: The current implementation doesn't append temperature or prompt yet
+    }, TEST_TIMEOUT);
+
+    it('should handle different audio formats', async () => {
+      const formats = [
+        { name: 'test.mp3', type: 'audio/mp3' },
+        { name: 'test.m4a', type: 'audio/m4a' },
+        { name: 'test.flac', type: 'audio/flac' },
+        { name: 'test.ogg', type: 'audio/ogg' },
+      ];
+      const url = 'http://localhost:8000';
+
+      for (const format of formats) {
+        const file = createMockFile(format.name, 1024, format.type);
+        mockFetch.mockResolvedValueOnce(createMockResponse(mockSuccessResponse));
+
+        const result = await transcribeAudio(url, file, defaultTranscriptionOptions);
+        expect(result).toEqual(mockSuccessResponse);
+      }
+    }, TEST_TIMEOUT);
+
+    it('should handle concurrent requests', async () => {
+      const files = Array.from({ length: 3 }, (_, i) => 
+        createMockFile(`test${i}.wav`, 1024)
+      );
+      const url = 'http://localhost:8000';
+
+      // Mock different responses for each request
+      files.forEach((_, i) => {
+        mockFetch.mockResolvedValueOnce(createMockResponse({
+          ...mockSuccessResponse,
+          text: `Transcription ${i}`,
+        }));
       });
 
-      const apiCallWithErrorHandling = async () => {
-        const response = await fetch('/api/nonexistent');
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(`HTTP ${response.status}: ${errorData.error}`);
-        }
-        
-        return response.json();
-      };
+      const promises = files.map(file => 
+        transcribeAudio(url, file, defaultTranscriptionOptions)
+      );
 
-      await expect(apiCallWithErrorHandling()).rejects.toThrow('HTTP 404: Endpoint not found');
-    });
+      const results = await Promise.all(promises);
+
+      expect(results).toHaveLength(3);
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      results.forEach((result: any, i: number) => {
+        expect(result.text).toBe(`Transcription ${i}`);
+      });
+    }, TEST_TIMEOUT);
+  });
+
+  describe('checkApiHealth', () => {
+    it('should check server health successfully', async () => {
+      const url = 'http://localhost:8000';
+      const healthResponse = { status: 'healthy', timestamp: Date.now() };
+      
+      // Clear the default mock implementation for this test
+      mockFetch.mockClear();
+      mockFetch.mockResolvedValueOnce(createMockResponse(healthResponse));
+
+      const result = await checkApiHealth(url);
+
+      expect(mockFetch).toHaveBeenCalledWith(`${url}/health`, {
+        headers: {}
+      });
+      expect(result.status).toBe('healthy');
+    }, TEST_TIMEOUT);
+
+    it('should handle unhealthy server status', async () => {
+      const url = 'http://localhost:8000';
+      mockFetch.mockResolvedValueOnce(createMockResponse(
+        { status: 'unhealthy', error: 'GPU not available' }, 
+        503
+      ));
+
+      const result = await checkApiHealth(url);
+      expect(result.status).toBe('error');
+      expect(result.message).toContain('HTTP error! status: 503');
+    }, TEST_TIMEOUT);
+
+    it('should handle network errors', async () => {
+      const url = 'http://localhost:8000';
+      mockFetch.mockRejectedValueOnce(new Error('Connection to API server failed'));
+
+      const result = await checkApiHealth(url);
+      expect(result.status).toBe('error');
+      expect(result.message).toContain('Connection to API server failed');
+    }, TEST_TIMEOUT);
+
+    it('should include authentication headers when provided', async () => {
+      const url = 'http://localhost:8000';
+      const token = 'test-token';
+      const healthResponse = { status: 'healthy' };
+      mockFetch.mockResolvedValueOnce(createMockResponse(healthResponse));
+
+      await checkApiHealth(url, token);
+
+      expect(mockFetch).toHaveBeenCalledWith(`${url}/health`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+    }, TEST_TIMEOUT);
+  });
+
+  describe('fetchApiOptions', () => {
+    const mockModels = {
+      data: [
+        { id: 'tiny', task: 'transcribe', language: ['en', 'ja'] },
+        { id: 'base', task: 'transcribe', language: ['en', 'ja', 'es'] },
+        { id: 'large', task: 'transcribe', language: null },
+      ]
+    };
+
+    it('should fetch available models successfully', async () => {
+      const url = 'http://localhost:8000/v1/models';
+      mockFetch.mockResolvedValueOnce(createMockResponse(mockModels));
+
+      const result = await fetchApiOptions(url);
+
+      expect(mockFetch).toHaveBeenCalledWith(url, {
+        headers: {}
+      });
+      expect(result.models).toHaveLength(3);
+      expect(result.models[0].id).toBe('tiny');
+      expect(result.responseFormats).toContain('json');
+      expect(result.timestampGranularities).toContain('word');
+    }, TEST_TIMEOUT);
+
+    it('should handle models endpoint errors', async () => {
+      const url = 'http://localhost:8000/v1/models';
+      mockFetch.mockResolvedValueOnce(createMockResponse(
+        { error: 'Models not available' }, 
+        503
+      ));
+
+      await expect(fetchApiOptions(url)).rejects.toThrow();
+    }, TEST_TIMEOUT);
+
+    it('should handle network errors for models endpoint', async () => {
+      const url = 'http://localhost:8000/v1/models';
+      mockFetch.mockRejectedValueOnce(new Error('Network unreachable'));
+
+      await expect(fetchApiOptions(url)).rejects.toThrow('Network unreachable');
+    }, TEST_TIMEOUT);
+
+    it('should include authentication headers when provided', async () => {
+      const url = 'http://localhost:8000/v1/models';
+      const token = 'test-token';
+      mockFetch.mockResolvedValueOnce(createMockResponse(mockModels));
+
+      await fetchApiOptions(url, token);
+
+      expect(mockFetch).toHaveBeenCalledWith(url, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+    }, TEST_TIMEOUT);
+
+    it('should extract unique languages from models', async () => {
+      const url = 'http://localhost:8000/v1/models';
+      mockFetch.mockResolvedValueOnce(createMockResponse(mockModels));
+
+      const result = await fetchApiOptions(url);
+
+      expect(result.languages).toContain('en');
+      expect(result.languages).toContain('ja');
+      expect(result.languages).toContain('es');
+      // Should not contain duplicates
+      expect(result.languages.filter(lang => lang === 'en')).toHaveLength(1);
+    }, TEST_TIMEOUT);
+  });
+
+  describe('error handling edge cases', () => {
+    it('should handle malformed JSON response', async () => {
+      const file = createMockFile('test.wav', 1024);
+      const url = 'http://localhost:8000';
+      const response = createMockResponse('malformed json');
+      response.json = vi.fn().mockRejectedValue(new SyntaxError('Unexpected token'));
+      
+      mockFetch.mockResolvedValueOnce(response);
+
+      await expect(transcribeAudio(url, file, defaultTranscriptionOptions))
+        .rejects.toThrow();
+    }, TEST_TIMEOUT);
+
+    it('should handle empty file', async () => {
+      const emptyFile = createMockFile('empty.wav', 0);
+      const url = 'http://localhost:8000';
+      mockFetch.mockResolvedValueOnce(createMockResponse(
+        { error: 'File is empty' }, 
+        400
+      ));
+
+      await expect(transcribeAudio(url, emptyFile, defaultTranscriptionOptions))
+        .rejects.toThrow();
+    }, TEST_TIMEOUT);
+
+    it('should handle unsupported file types', async () => {
+      const invalidFile = createMockFile('test.txt', 1024, 'text/plain');
+      const url = 'http://localhost:8000';
+      mockFetch.mockResolvedValueOnce(createMockResponse(
+        { error: 'Unsupported file format' }, 
+        415
+      ));
+
+      await expect(transcribeAudio(url, invalidFile, defaultTranscriptionOptions))
+        .rejects.toThrow();
+    }, TEST_TIMEOUT);
+
+    it('should handle rate limiting', async () => {
+      const file = createMockFile('test.wav', 1024);
+      const url = 'http://localhost:8000';
+      const rateLimitResponse = createMockResponse(
+        { error: 'Rate limit exceeded' }, 
+        429,
+        { 'retry-after': '60' }
+      );
+      
+      mockFetch.mockResolvedValueOnce(rateLimitResponse);
+
+      await expect(transcribeAudio(url, file, defaultTranscriptionOptions))
+        .rejects.toThrow();
+    }, TEST_TIMEOUT);
+
+    it('should handle CORS errors', async () => {
+      const file = createMockFile('test.wav', 1024);
+      const url = 'http://localhost:8000';
+      const corsError = new TypeError('Failed to fetch');
+      mockFetch.mockRejectedValueOnce(corsError);
+
+      await expect(transcribeAudio(url, file, defaultTranscriptionOptions))
+        .rejects.toThrow('Failed to fetch');
+    }, TEST_TIMEOUT);
+
+    it('should handle timeout scenarios', async () => {
+      const file = createMockFile('test.wav', 1024);
+      const url = 'http://localhost:8000';
+      
+      // Mock fetch to simulate timeout using AbortController
+      mockFetch.mockImplementationOnce(() => {
+        return Promise.reject(new Error('Request timeout'));
+      });
+
+      await expect(transcribeAudio(url, file, defaultTranscriptionOptions))
+        .rejects.toThrow('Request timeout');
+    }, TEST_TIMEOUT);
+
+    it('should handle responses with extra fields gracefully', async () => {
+      const file = createMockFile('test.wav', 1024);
+      const url = 'http://localhost:8000';
+      const responseWithExtraFields = createMockResponse({
+        ...mockSuccessResponse,
+        extra_field: 'should be ignored',
+        another_field: 42,
+      });
+
+      mockFetch.mockResolvedValueOnce(responseWithExtraFields);
+
+      const result = await transcribeAudio(url, file, defaultTranscriptionOptions);
+      
+      // Should still work and contain expected fields
+      expect(result.text).toBe(mockSuccessResponse.text);
+      expect(result.segments).toEqual(mockSuccessResponse.segments);
+    }, TEST_TIMEOUT);
   });
 });

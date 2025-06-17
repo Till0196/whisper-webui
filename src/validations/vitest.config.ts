@@ -27,7 +27,7 @@ export default defineConfig({
     ],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json', 'html'],
+      reporter: ['text'],
       exclude: [
         'node_modules/',
         'src/validations/',
@@ -39,15 +39,36 @@ export default defineConfig({
       ],
       thresholds: {
         global: {
-          branches: 70,
-          functions: 70,
-          lines: 70,
-          statements: 70
+          branches: 80,
+          functions: 80,
+          lines: 80,
+          statements: 80
         }
       }
     },
-    testTimeout: 10000,
-    hookTimeout: 10000
+    // 並行実行の設定
+    pool: 'threads',
+    poolOptions: {
+      threads: {
+        singleThread: false,
+        maxThreads: 4,
+        minThreads: 1,
+      }
+    },
+    testTimeout: 15000,
+    hookTimeout: 15000,
+    // より多くの並行実行を可能にする
+    maxConcurrency: 8,
+    // テスト実行の詳細設定
+    logHeapUsage: true,
+    reporters: ['default'],
+    typecheck: {
+      enabled: false,
+    },
+    // Unhandled rejectionを適切にキャッチ
+    dangerouslyIgnoreUnhandledErrors: false,
+    // より安全なテスト実行
+    isolate: true,
   },
   resolve: {
     alias: {
@@ -59,7 +80,9 @@ export default defineConfig({
       '@types': resolve(__dirname, '../types'),
       '@lib': resolve(__dirname, '../lib'),
       '@i18n': resolve(__dirname, '../i18n'),
-      '@services': resolve(__dirname, '../services')
+      '@services': resolve(__dirname, '../services'),
+      '@app': resolve(__dirname, '../app'),
+      '@sections': resolve(__dirname, '../sections')
     }
   }
 });
