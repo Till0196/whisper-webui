@@ -34,15 +34,27 @@ Object.defineProperty(global, 'CSSStyleSheet', {
   writable: true
 });
 
-// LocalStorageのモック - より強力なバージョン
-const localStorageMock = {
-  getItem: vi.fn(),
-  setItem: vi.fn(),
-  removeItem: vi.fn(),
-  clear: vi.fn(),
-  length: 0,
-  key: vi.fn(),
+// LocalStorageのモック - 実際のデータを保存するバージョン
+const createLocalStorageMock = () => {
+  const store: Record<string, string> = {};
+  
+  return {
+    getItem: vi.fn((key: string) => store[key] || null),
+    setItem: vi.fn((key: string, value: string) => {
+      store[key] = String(value);
+    }),
+    removeItem: vi.fn((key: string) => {
+      delete store[key];
+    }),
+    clear: vi.fn(() => {
+      Object.keys(store).forEach(key => delete store[key]);
+    }),
+    length: 0,
+    key: vi.fn((index: number) => Object.keys(store)[index] || null),
+  };
 };
+
+const localStorageMock = createLocalStorageMock();
 
 // 最初にlocalStorageを複数の場所に定義して確実にアクセス可能にする
 (globalThis as any).localStorage = localStorageMock;
