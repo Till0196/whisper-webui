@@ -288,7 +288,7 @@ services:
 | `VITE_WHISPER_API_URL` | Whisper APIのURL | `http://localhost:9000` | `https://api.openai.com/v1` |
 | `VITE_WHISPER_API_TOKEN` | APIトークン | - | `sk-...` |
 | `VITE_USE_SERVER_PROXY` | プロキシモード | `false` | `true` |
-| `VITE_SERVER_PROXY_URL` | プロキシサーバーURL | - | `/api/transcribe` |
+| `VITE_SERVER_PROXY_URL` | プロキシサーバーURL | - | `http://localhost:9000` |
 | `VITE_WHISPER_PROXY_TOKEN` | APIトークン | - | `sk-...` |
 | `VITE_HIDE_CREDENTIALS` | 認証情報の隠匿 | `false` | `true` |
 | `VITE_ALLOW_CREDENTIAL_EDIT` | 編集許可 | `true` | `false` |
